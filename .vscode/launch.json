@@ -1,0 +1,23 @@
+{
+    /*
+     * Requires the Rust Language Server (RLS) and Cortex-Debug extensions
+     * https://marketplace.visualstudio.com/items?itemName=rust-lang.rust
+     * https://marketplace.visualstudio.com/items?itemName=marus25.cortex-debug
+     */
+    "version": "0.2.0",
+    "configurations": [
+        {
+            "cwd": "${workspaceRoot}",
+            "executable": "./target/thumbv7em-none-eabihf/release/app",
+            "name": "Run with J-Link",
+            "preLaunchTask": "Cargo Build (release)",
+            "request": "launch",
+            "type": "cortex-debug",
+            "showDevDebugOutput": "parsed",
+            "runToEntryPoint": "main",
+            "servertype": "jlink",
+            "device": "GD32F307VE",
+            "interface": "swd",
+        }
+    ]
+}

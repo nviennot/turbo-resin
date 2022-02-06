@@ -1,0 +1,15 @@
+**/*.rs.bk
+.#*
+.gdb_history
+target/
+
+.DS_Store
+stuff/orig-firmware.elf
+
+# editor files
+.vscode/*
+!.vscode/*.md
+!.vscode/*.svd
+!.vscode/launch.json
+!.vscode/tasks.json
+!.vscode/extensions.json

@@ -1,0 +1,42 @@
+[package]
+authors = ["Nicolas Viennot <nicolas@viennot.biz>"]
+edition = "2018"
+readme = "README.md"
+name = "app"
+version = "0.1.0"
+
+[dependencies]
+embedded-hal = "0.2.3"
+cortex-m = "0.7"
+cortex-m-rt = "0.7"
+cortex-m-rtic = "1.0"
+systick-monotonic = "1.0"
+rtt-target = { version = "0.3", features = ["cortex-m"]}
+stm32f1xx-hal = { git = "https://github.com/stm32-rs/stm32f1xx-hal.git", features = ["rt", "stm32f107", "medium"]}
+gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", features = ["gd32f307"] } # This one is for the clock register definitions.
+spi-memory = "0.2" # For the external flash access. Maybe not useful at this point.
+embedded-graphics = "0.7"
+embedded-graphics-core = "0.3"
+ramp-maker = {version = "0.2", features = ["libm"]}
+nb = "1"
+lvgl = { git = "https://github.com/nviennot/lvgl-rs.git", features =["logger", "lvgl_alloc"] }
+
+#arrayvec = {version = "0.7", default-features = false }
+#cty = "0.2"
+#embedded-time = "0.12"
+#fugit = "0.3"
+
+# uncomment this for lvgl dev
+# [patch."https://github.com/nviennot/lvgl-rs.git"]
+# lvgl = { path = "../repos/lvgl-rs/lvgl" }
+
+# this lets you use `cargo fix`!
+[[bin]]
+name = "app"
+test = false
+bench = false
+
+[profile.release]
+#codegen-units = 1 # better optimizations
+debug = true # symbols are nice and they don't increase the size on Flash
+#lto = true # better optimizations
