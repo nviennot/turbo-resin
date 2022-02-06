@@ -178,7 +178,6 @@ impl Display {
         self.fill_screen(0);
 
         delay.delay_ms(110u32);
-        self.backlight.set_high();
     }
 
     pub fn write_data_as_two_u8(&mut self, v: u16) {

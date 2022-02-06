@@ -1,6 +1,8 @@
 Turbo Resin
 ===========
 
+![Turbo Resin](stuff/turbo_resin.jpg)
+
 Turbo Resin is an open-source firmware for chitu based controller board
 printers.
 

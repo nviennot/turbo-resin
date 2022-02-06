@@ -101,7 +101,8 @@ mod app {
         lvgl_ticks: lvgl::core::Ticks,
         lvgl_input_device: InputDevice::<TouchPad>,
         display: Display::<RawDisplay>,
-        move_z_ui: Screen<ui::MoveZ> ,
+        move_z_ui: Screen<ui::MoveZ>,
+        lcd: drivers::lcd::Lcd,
     }
 
     fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>, InputDevice<TouchPad>) {
@@ -133,6 +134,7 @@ mod app {
         let systick = machine.systick;
         let stepper = machine.stepper;
         let touch_screen = machine.touch_screen;
+        let lcd = machine.lcd;
 
         let (mut lvgl, mut display, lvgl_input_device) = lvgl_init(display);
 
@@ -150,14 +152,13 @@ mod app {
         /*
         let ext_flash = machine.ext_flash;
         let delay = machine.delay;
-        let mut stepper = machine.stepper;
         */
 
         debug!("Init complete");
 
         (
             Shared { stepper, touch_screen, last_touch_event },
-            Local { lvgl, lvgl_ticks, lvgl_input_device, display, move_z_ui },
+            Local { lvgl, lvgl_ticks, lvgl_input_device, display, move_z_ui, lcd },
             init::Monotonics(systick),
         )
     }
@@ -202,7 +203,7 @@ mod app {
         }
     }
 
-    #[idle(local = [lvgl, lvgl_input_device, display, move_z_ui], shared = [last_touch_event, stepper])]
+    #[idle(local = [lvgl, lvgl_input_device, display, move_z_ui, lcd], shared = [last_touch_event, stepper])]
     fn idle(mut ctx: idle::Context) -> ! {
         let lvgl = ctx.local.lvgl;
         let lvgl_input_device = ctx.local.lvgl_input_device;
@@ -217,9 +218,9 @@ mod app {
                 };
             });
 
-            lvgl.run_tasks();
-
             move_z_ui.update(&mut ctx.shared.stepper);
+
+            lvgl.run_tasks();
         }
     }
 }
