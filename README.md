@@ -1,5 +1,5 @@
-Turbo Resin
-===========
+Turbo Resin: open-source firmware for resin printers
+====================================================
 
 ![Turbo Resin](stuff/turbo_resin.jpg)
 
@@ -12,21 +12,35 @@ It currently supports:
 This is the implementation of a firmware based on
 [Reverse engineering the Anycubic Photon Mono 4K](https://github.com/nviennot/reversing-mono4k#readme)
 
-## Planned features
+## Roadmap
 
-* Support anti-aliasing (already confirmed that it's doable)
-* Support more file formats
-* Better Z-Axis motion control (to print faster)
-* Build plate force feedback for speed optimization. Following [the work of Jan
-* Mrázek](https://blog.honzamrazek.cz/2022/01/prints-not-sticking-to-the-build-plate-layer-separation-rough-surface-on-a-resin-printer-resin-viscosity-the-common-denominator/)
+Drivers:
+* [X] Read the touch screen
+* [X] Display on the touch screen
+* [X] Use the LVGL UI library
+* [X] Control the stepper motor
+* [X] Read/write to external Flash
+* [ ] Read/write to external EEPROM
+* [X] Drive the LCD panel (anti-aliasing support confirmed!)
+* [ ] Read from USB flash drive
+* [ ] Control the UV light
+* [ ] Z=0 detection
+
+Printing features:
+* [ ] Better Z-Axis motion control for faster prints with fast deceleration
+* [ ] Z=0 calibration
+* [ ] Read .pwma files from USB flash drive
+* [ ] Support multiple exposure (like RERF but configurable)
+* [ ] Print algorithm
+* [ ] Support more file formats to support various slicers
+* [ ] Add support for other printers (help needed!)
+* [ ] Build-plate force feedback for speed optimization. Following [the work of Jan Mrázek](https://blog.honzamrazek.cz/2022/01/prints-not-sticking-to-the-build-plate-layer-separation-rough-surface-on-a-resin-printer-resin-viscosity-the-common-denominator/)
 
 ## Flashing the firmware
 
 As of now, there's no official distribution to flash the firmware via a USB
 stick. You'll need:
-* A programmer like JLink or [ST-Link
-V2](https://www.amazon.com/HiLetgo-Emulator-Downloader-Programmer-STM32F103C8T6)
-($10)
+* A programmer like JLink or [ST-Link V2](https://www.amazon.com/HiLetgo-Emulator-Downloader-Programmer-STM32F103C8T6/dp/B07SQV6VLZ) ($11)
 * A 3mm hex screwdriver
 
 ## Compiling the firmware
