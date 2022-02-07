@@ -35,6 +35,8 @@ Printing features:
 * [ ] Support more file formats to support various slicers
 * [ ] Add support for other printers (help needed!)
 * [ ] Build-plate force feedback for speed optimization. Following [the work of Jan Mrázek](https://blog.honzamrazek.cz/2022/01/prints-not-sticking-to-the-build-plate-layer-separation-rough-surface-on-a-resin-printer-resin-viscosity-the-common-denominator/)
+* [ ] Over-expose structural region of the print to add strength while letting
+    edges be normally exposed
 
 ## Flashing the firmware
 
