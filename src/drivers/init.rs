@@ -16,6 +16,8 @@ use crate::drivers::{
 
 use crate::consts::system::*;
 
+use super::zsensor::ZSensor;
+
 pub type Systick = systick_monotonic::Systick<{ SYSTICK_HZ }>;
 pub mod prelude {
     pub use systick_monotonic::ExtU64;
@@ -28,6 +30,7 @@ pub struct Machine {
     pub stepper: Stepper,
     pub systick: Systick,
     pub lcd: Lcd,
+    pub zsensor: ZSensor,
 }
 
 impl Machine {
@@ -93,6 +96,14 @@ impl Machine {
         //  Stepper motor (Z-axis)
         //--------------------------
 
+        let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
+
+        let zsensor = ZSensor::new(
+            pb3,
+            // pb4,
+            &mut gpiob.crl,
+        );
+
         let stepper = Stepper::new(
             gpioe.pe4, gpioe.pe5, gpioe.pe6,
             gpioc.pc3, gpioc.pc0,
@@ -119,6 +130,6 @@ impl Machine {
         let syst = delay.free();
         let systick = Systick::new(syst, clocks.sysclk().0);
 
-        Self { ext_flash, display, touch_screen, stepper, lcd, systick }
+        Self { ext_flash, display, touch_screen, stepper, lcd, zsensor, systick }
     }
 }

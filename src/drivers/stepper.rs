@@ -3,6 +3,7 @@ use stm32f1xx_hal::{
     prelude::*,
     gpio::*,
     gpio::gpioa::*,
+    gpio::gpiob::*,
     gpio::gpioc::*,
     gpio::gpioe::*,
     timer::{Timer, Tim2NoRemap, Event, CountDownTimer},
@@ -12,28 +13,59 @@ use stm32f1xx_hal::{
 };
 
 use ramp_maker::MotionProfile;
-use crate::consts::stepper::*;
+use crate::{consts::stepper::*, runtime::debug, drivers::clock::delay_ns};
 const STEPS_PER_MM: f32 = (DRIVER_MICROSTEPS * FULL_STEPS_PER_REVOLUTION) as f32 / SCREW_THREAD_PITCH_MM;
 
 #[derive(PartialEq, PartialOrd, Clone, Copy)]
 pub struct Steps(pub i32);
 
 impl Steps {
+    pub const MIN: Self = Self(i32::MIN/2);
+    pub const MAX: Self = Self(i32::MAX/2);
+
     pub fn as_mm(self) -> f32 {
         (self.0 as f32) / STEPS_PER_MM
+    }
+}
+
+impl core::ops::Add for Steps {
+    type Output = Steps;
+    fn add(self, rhs: Self) -> Self::Output {
+        Steps(self.0 + rhs.0)
+    }
+}
+
+impl core::ops::Sub for Steps {
+    type Output = Steps;
+    fn sub(self, rhs: Self) -> Self::Output {
+        Steps(self.0 - rhs.0)
+    }
+}
+
+impl core::ops::Neg for Steps {
+    type Output = Steps;
+
+    fn neg(self) -> Self::Output {
+        Steps(-self.0)
     }
 }
 
 pub mod prelude {
     use super::*;
 
-    pub trait F32Ext {
+    pub trait StepsExt {
         fn mm(self) -> Steps;
     }
 
-    impl F32Ext for f32 {
+    impl StepsExt for f32 {
         fn mm(self) -> Steps {
             Steps((self * STEPS_PER_MM) as i32)
+        }
+    }
+
+    impl StepsExt for i32 {
+        fn mm(self) -> Steps {
+            (self as f32).mm()
         }
     }
 }
@@ -45,6 +77,7 @@ pub enum Direction {
 }
 
 use prelude::*;
+
 
 pub struct Stepper {
     step_timer: CountDownTimer<TIM7>,
@@ -202,8 +235,18 @@ impl Stepper {
         self.profile.enter_position_mode(self.max_speed.0 as f32, steps as u32);
     }
 
+    // to current position
     pub fn set_target_relative(&mut self, steps: Steps) {
-        self.target.0 += steps.0;
+        self.set_target(self.current_position + steps);
+    }
+
+    pub fn set_target(&mut self, target: Steps) {
+        self.target = target;
+        let steps = target - self.current_position;
+
+        if steps.0 == 0 {
+            return;
+        }
 
         let (dir, steps) = if steps.0 > 0 {
             (Direction::Up, steps.0 as u32)
@@ -218,6 +261,11 @@ impl Stepper {
         self.enable.set_high();
         self.reload_timer(5, false);
         self.step_timer.listen(Event::Update);
+    }
+
+    pub fn set_origin(&mut self, origin_position: Steps) {
+        self.target = self.target + self.current_position - origin_position;
+        self.current_position = -origin_position;
     }
 
     pub fn controlled_stop(&mut self) {

@@ -9,13 +9,15 @@ use alloc::format;
 use lvgl::cstr_core::CStr;
 use crate::drivers::stepper::{
     prelude::*,
-    Stepper
+    Stepper,
 };
+use crate::drivers::zsensor::ZSensor;
 
 #[derive(Debug)]
 enum UserAction {
     MoveUp,
     MoveDown,
+    Calibrate,
     StopRequested,
     SetSpeed(f32),
 }
@@ -26,6 +28,7 @@ pub struct MoveZ {
     speed_slider: Slider<Self>,
     speed_label: Label<Self>,
     position_label: Label<Self>,
+    btn_calibrate: Btn<Self>,
 
     user_action: Option<UserAction>,
 }
@@ -94,6 +97,21 @@ impl MoveZ {
             .align_to(&speed_label, Align::OutBottomLeft, 0, 0);
         });
 
+        let btn_calibrate = Btn::new(&mut screen).apply(|obj| {
+            Label::new(obj)
+                .set_text(&CStr::from_bytes_with_nul(b"Calibrate\0").unwrap());
+            obj
+            .align_to(&position_label, Align::OutBottomMid, 0, spacing)
+            .add_flag(Flag::CHECKABLE)
+            .on_event(Event::Clicked, |context| {
+                let checked = context.btn_calibrate.has_state(State::CHECKED);
+                context.user_action = Some(
+                    if checked { UserAction::Calibrate }
+                    else { UserAction::StopRequested }
+                );
+            });
+        });
+
         Label::new(&mut screen).apply(|obj| { obj
             .set_text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.1\0").unwrap())
             .align_to(&screen, Align::BottomRight, -5, -5);
@@ -105,6 +123,7 @@ impl MoveZ {
             speed_slider,
             speed_label,
             position_label,
+            btn_calibrate,
 
             user_action: None,
         };
@@ -114,7 +133,10 @@ impl MoveZ {
         })
     }
 
-    pub fn update(&mut self, stepper: &mut impl rtic::Mutex<T=Stepper>) {
+    pub fn update(&mut self,
+        stepper: &mut impl rtic::Mutex<T=Stepper>,
+        zsensor: &mut ZSensor,
+    ) {
         match self.user_action.take() {
             Some(UserAction::MoveUp) => {
                 stepper.lock(|s| s.set_target_relative(40.0.mm()));
@@ -130,13 +152,17 @@ impl MoveZ {
                 stepper.lock(|s| s.controlled_stop());
             }
             Some(UserAction::SetSpeed(v)) => stepper.lock(|s| s.set_max_speed(Some(v.mm()))),
+            Some(UserAction::Calibrate) => {
+                zsensor.calibrate(stepper);
+                self.btn_calibrate.clear_state(State::CHECKED | State::DISABLED);
+            }
             None => {}
         }
 
 
-        let (is_idle, current_position, max_speed) = stepper.lock(|s|
+        let (is_idle, current_position, max_speed) = stepper.lock(|s| {
             (s.is_idle(), s.current_position, s.max_speed)
-        );
+        });
 
         if is_idle {
             self.btn_move_up.clear_state(State::CHECKED | State::DISABLED);

@@ -103,6 +103,7 @@ mod app {
         display: Display::<RawDisplay>,
         move_z_ui: Screen<ui::MoveZ>,
         lcd: drivers::lcd::Lcd,
+        zsensor: drivers::zsensor::ZSensor,
     }
 
     fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>, InputDevice<TouchPad>) {
@@ -135,6 +136,7 @@ mod app {
         let stepper = machine.stepper;
         let touch_screen = machine.touch_screen;
         let lcd = machine.lcd;
+        let zsensor = machine.zsensor;
 
         let (mut lvgl, mut display, lvgl_input_device) = lvgl_init(display);
 
@@ -158,7 +160,7 @@ mod app {
 
         (
             Shared { stepper, touch_screen, last_touch_event },
-            Local { lvgl, lvgl_ticks, lvgl_input_device, display, move_z_ui, lcd },
+            Local { lvgl, lvgl_ticks, lvgl_input_device, display, move_z_ui, lcd, zsensor },
             init::Monotonics(systick),
         )
     }
@@ -203,10 +205,11 @@ mod app {
         }
     }
 
-    #[idle(local = [lvgl, lvgl_input_device, display, move_z_ui, lcd], shared = [last_touch_event, stepper])]
+    #[idle(local = [lvgl, lvgl_input_device, display, move_z_ui, lcd, zsensor], shared = [last_touch_event, stepper])]
     fn idle(mut ctx: idle::Context) -> ! {
         let lvgl = ctx.local.lvgl;
         let lvgl_input_device = ctx.local.lvgl_input_device;
+        let zsensor = ctx.local.zsensor;
         let move_z_ui = ctx.local.move_z_ui.context().as_mut().unwrap();
 
         loop {
@@ -218,8 +221,7 @@ mod app {
                 };
             });
 
-            move_z_ui.update(&mut ctx.shared.stepper);
-
+            move_z_ui.update(&mut ctx.shared.stepper, zsensor);
             lvgl.run_tasks();
         }
     }
