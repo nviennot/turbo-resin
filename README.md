@@ -5,16 +5,10 @@ Turbo Resin: open-source firmware for resin printers
 
 ![Turbo Resin](stuff/turbo_resin.jpg)
 
-Turbo Resin is an open-source firmware for chitu based controller board
-printers.
+Turbo Resin is an open-source firmware for SLA resin printers.
 
-It currently supports:
-* Anycubic Photon Mono 4K
-
-To add support for other printers, I need some help. If people could share photos of the circuit boards of various printers, that would be a great start!
-
-This is the implementation of a firmware based on
-[Reverse engineering the Anycubic Photon Mono 4K](https://github.com/nviennot/reversing-mono4k#readme)
+This is the implementation of a firmware based on the
+[Reverse engineering of the Anycubic Photon Mono 4K](https://github.com/nviennot/reversing-mono4k#readme)
 
 ## Roadmap
 
@@ -41,6 +35,105 @@ Printing features:
 * [ ] Build-plate force feedback for speed optimization. Following [the work of Jan Mrázek](https://blog.honzamrazek.cz/2022/01/prints-not-sticking-to-the-build-plate-layer-separation-rough-surface-on-a-resin-printer-resin-viscosity-the-common-denominator/)
 * [ ] Over-expose structural region of the print to add strength while letting
     edges be normally exposed
+
+## Help needed to add support for other printers
+
+Right now the firmware supports only the Anycubic Photon Mono 4K.
+To add support for other printers, I need some help in identifying the circuit
+boards. If you have a printer that isn't marked as identified below, it would be
+of great help if you could open your printer, and identify your controller
+board. It may be one of the generic Chitu boards listed here on their website.
+See [here](https://shop.chitusystems.com/product-category/controller-board/) and
+[here](https://shop.chitusystems.com/product-category/nocategory/?orderby=price-desc&paged=1&count=36)
+There should be a version number printed on the board. You can find the match.
+
+If your controller board is a bit exotic (like in the AnyCubic), send high
+resolution photos. Join [our discord](https://discord.gg/9HSMNYxPAM).
+
+Identified printers:
+
+* [ ] AnyCubic Photon
+* [ ] AnyCubic Photon Mono
+* [X] AnyCubic Photon Mono 4K
+* [ ] AnyCubic Photon Mono SE
+* [ ] AnyCubic Photon Mono SQ
+* [ ] AnyCubic Photon Mono X
+* [ ] AnyCubic Photon Mono X 6K
+* [ ] AnyCubic Photon S
+* [ ] AnyCubic Photon Ultra
+* [ ] AnyCubic Photon X
+* [ ] AnyCubic Photon Zero
+* [ ] Creality HALOT-MAX CL-133
+* [ ] Creality HALOT-ONE CL-60
+* [ ] Creality HALOT-SKY CL-89
+* [ ] Creality LD-002H
+* [ ] Creality LD-002R
+* [ ] Creality LD-006
+* [ ] EPAX E10 5K
+* [ ] EPAX E10 Mono
+* [ ] EPAX E6 Mono
+* [ ] EPAX X1
+* [ ] EPAX X10
+* [ ] EPAX X10 4K Mono
+* [ ] EPAX X10 5K
+* [ ] EPAX X133 4K Mono
+* [ ] EPAX X156 4K Color
+* [ ] EPAX X1K 2K Mono
+* [ ] Elegoo Mars
+* [ ] Elegoo Mars 2 Pro
+* [ ] Elegoo Mars 3
+* [ ] Elegoo Mars C
+* [ ] Elegoo Saturn
+* [ ] FlashForge Explorer MAX
+* [ ] FlashForge Focus 13.3
+* [ ] FlashForge Focus 8.9
+* [ ] FlashForge Foto 13.3
+* [ ] FlashForge Foto 6.0
+* [ ] FlashForge Foto 8.9
+* [ ] FlashForge Hunter
+* [ ] Longer Orange 10
+* [ ] Longer Orange 120
+* [ ] Longer Orange 30
+* [ ] Longer Orange 4K
+* [ ] Nova3D Bene4
+* [ ] Nova3D Bene4 Mono
+* [ ] Nova3D Bene5
+* [ ] Nova3D Elfin
+* [ ] Nova3D Elfin2
+* [ ] Nova3D Elfin2 Mono SE
+* [ ] Nova3D Elfin3 Mini
+* [ ] Nova3D Whale
+* [ ] Nova3D Whale2
+* [ ] Peopoly Phenom
+* [ ] Peopoly Phenom L
+* [ ] Peopoly Phenom Noir
+* [ ] Peopoly Phenom XXL
+* [ ] Phrozen Shuffle
+* [ ] Phrozen Shuffle 16
+* [ ] Phrozen Shuffle 4K
+* [ ] Phrozen Shuffle Lite
+* [ ] Phrozen Shuffle XL
+* [ ] Phrozen Shuffle XL Lite
+* [ ] Phrozen Sonic
+* [ ] Phrozen Sonic 4K
+* [ ] Phrozen Sonic Mega 8K
+* [ ] Phrozen Sonic Mighty 4K
+* [ ] Phrozen Sonic Mini
+* [ ] Phrozen Sonic Mini 4K
+* [ ] Phrozen Sonic Mini 8K
+* [ ] Phrozen Transform
+* [ ] QIDI I-Box Mono
+* [ ] QIDI S-Box
+* [ ] QIDI Shadow5.5
+* [ ] QIDI Shadow6.0 Pro
+* [ ] Uniz IBEE
+* [ ] Voxelab Ceres 8.9
+* [ ] Voxelab Polaris 5.5
+* [ ] Voxelab Proxima 6
+* [ ] Wanhao CGR Mini Mono
+* [ ] Wanhao CGR Mono
+* [ ] Wanhao D7
+* [ ] Wanhao D8
 
 ## Flashing the firmware
 
