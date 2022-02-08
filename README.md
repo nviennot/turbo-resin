@@ -1,3 +1,5 @@
+[![Discord](https://img.shields.io/discord/940395991016828980?label=Discord&logo=discord&logoColor=white)](https://discord.gg/9HSMNYxPAM)
+
 Turbo Resin: open-source firmware for resin printers
 ====================================================
 
