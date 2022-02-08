@@ -11,6 +11,8 @@ printers.
 It currently supports:
 * Anycubic Photon Mono 4K
 
+To add support for other printers, I need some help. If people could share photos of the circuit boards of various printers, that would be a great start!
+
 This is the implementation of a firmware based on
 [Reverse engineering the Anycubic Photon Mono 4K](https://github.com/nviennot/reversing-mono4k#readme)
 
