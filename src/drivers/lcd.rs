@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 use nb::block;
 use stm32f1xx_hal::{
     pac::SPI1,

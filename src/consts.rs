@@ -1,3 +1,5 @@
+// SPDX-License-Identifier: GPL-3.0-or-later
+
 pub mod system {
     pub const HEAP_SIZE: usize = 10*1024;
     pub const SYSTICK_HZ: u32 = 100_000; // 10us ticks
