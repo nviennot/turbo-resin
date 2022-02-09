@@ -13,7 +13,8 @@ use stm32f1xx_hal::{
     pwm::Channel,
 };
 
-use ramp_maker::MotionProfile;
+use stepgen::Stepgen;
+
 use crate::{consts::stepper::*, runtime::debug, drivers::clock::delay_ns};
 const STEPS_PER_MM: f32 = (DRIVER_MICROSTEPS * FULL_STEPS_PER_REVOLUTION) as f32 / SCREW_THREAD_PITCH_MM;
 
@@ -85,7 +86,7 @@ pub struct Stepper {
     step: PE5<Output<PushPull>>,
     dir: PE4<Output<PushPull>>,
     enable: PE6<Output<PushPull>>,
-    profile: ramp_maker::Trapezoidal<f32>,
+    profile: Stepgen,
     pub current_position: Steps,
     pub target: Steps,
     pub max_speed: Steps,
@@ -165,7 +166,10 @@ impl Stepper {
         pwm.set_duty(Channel::C4, (pwm.get_max_duty() * 8) / 10);
         pwm.enable(Channel::C4);
 
-        let profile = ramp_maker::Trapezoidal::new(MAX_ACCELERATION.mm().0 as f32);
+        let mut profile = Stepgen::new(1_000_000);
+
+        profile.set_acceleration((MAX_ACCELERATION.mm().0 as u32) << 8).unwrap();
+        profile.set_target_speed((DEFAULT_MAX_SPEED.mm().0 as u32) << 8).unwrap();
 
         // Value doesn't matter here, it will be re-initialized later.
         let step_timer = step_timer.start_count_down(10.hz());
@@ -179,25 +183,22 @@ impl Stepper {
 
     pub fn on_interrupt(&mut self) {
         let _ = self.step_timer.wait(); // clears the interrupt flag
-        cortex_m::asm::delay(120);
         self.do_step();
 
-        //let start_cycles = super::clock::read_cycles();
-        let result = self.profile.next_delay();
-        //let end_cycles = super::clock::read_cycles();
+        // 85 cycles accelerating, 65 cycles plateau, 74 coming back. 38 when stopping.
 
-        if let Some(delay_s) = result {
-            let delay_us = (delay_s * 1_000_000.0) as u32;
+        if let Some(delay_us) = self.profile.next() {
+        //if let Some(delay_us) = super::clock::count_cycles(|| self.profile.next()) {
+            let delay_us = (delay_us + 128) >> 8;
             self.reload_timer(delay_us, true);
         } else {
             self.stop();
         }
 
-        //let total_cycles = end_cycles.wrapping_sub(start_cycles);
-        //debug!("Cycles: {}", total_cycles);
     }
 
     fn reload_timer(&mut self, mut delay_us: u32, since_last_interrupt: bool) {
+        //debug!("delay: {}", delay_us);
         if since_last_interrupt {
             delay_us = delay_us.saturating_sub(self.step_timer.micros_since());
         }
@@ -237,11 +238,7 @@ impl Stepper {
     // If max_speed is None, it goes back to default.
     pub fn set_max_speed(&mut self, max_speed: Option<Steps>) {
         self.max_speed = max_speed.unwrap_or(DEFAULT_MAX_SPEED.mm());
-
-        let mut steps = self.target.0 - self.current_position.0;
-        if steps < 0 { steps = -steps; }
-
-        self.profile.enter_position_mode(self.max_speed.0 as f32, steps as u32);
+        self.profile.set_target_speed((self.max_speed.0 as u32) << 8).unwrap();
     }
 
     // to current position
@@ -264,7 +261,8 @@ impl Stepper {
         };
 
         self.set_direction(dir);
-        self.profile.enter_position_mode(self.max_speed.0 as f32, steps);
+        let steps = self.profile.current_step() + steps;
+        self.profile.set_target_step(steps).unwrap();
 
         // We need to hold the enable pin high for 5us before we can start stepping the motor.
         self.enable.set_high();
@@ -278,11 +276,11 @@ impl Stepper {
     }
 
     pub fn controlled_stop(&mut self) {
-        self.profile.enter_position_mode(0.000001.mm().0 as f32, 100.0.mm().0 as u32);
+        self.profile.set_target_step(self.profile.current_step()).unwrap();
     }
 
     pub fn stop(&mut self) {
-        self.profile = ramp_maker::Trapezoidal::new(MAX_ACCELERATION.mm().0 as f32);
+        self.profile.set_target_step(self.profile.current_step()).unwrap();
         self.target = self.current_position;
 
         self.step_timer.unlisten(Event::Update);

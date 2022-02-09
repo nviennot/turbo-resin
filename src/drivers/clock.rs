@@ -153,3 +153,13 @@ pub fn read_cycles() -> u32 {
         CYCLE_COUNTER_SINGLETON.as_ref().unwrap_unchecked().cycles()
     }
 }
+
+
+pub fn count_cycles<R>(mut f: impl FnMut() -> R) -> R {
+    let start_cycles = read_cycles();
+    let ret = f();
+    let end_cycles = read_cycles();
+    let total_cycles = end_cycles.wrapping_sub(start_cycles);
+    crate::debug!("Cycles: {}", total_cycles);
+    ret
+}
