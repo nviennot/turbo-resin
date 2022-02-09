@@ -179,19 +179,27 @@ impl Stepper {
 
     pub fn on_interrupt(&mut self) {
         let _ = self.step_timer.wait(); // clears the interrupt flag
+        cortex_m::asm::delay(120);
         self.do_step();
 
-        if let Some(delay_s) = self.profile.next_delay() {
+        //let start_cycles = super::clock::read_cycles();
+        let result = self.profile.next_delay();
+        //let end_cycles = super::clock::read_cycles();
+
+        if let Some(delay_s) = result {
             let delay_us = (delay_s * 1_000_000.0) as u32;
             self.reload_timer(delay_us, true);
         } else {
             self.stop();
         }
+
+        //let total_cycles = end_cycles.wrapping_sub(start_cycles);
+        //debug!("Cycles: {}", total_cycles);
     }
 
     fn reload_timer(&mut self, mut delay_us: u32, since_last_interrupt: bool) {
         if since_last_interrupt {
-            delay_us = delay_us.checked_sub(self.step_timer.micros_since()).unwrap_or(0);
+            delay_us = delay_us.saturating_sub(self.step_timer.micros_since());
         }
         if delay_us == 0 {
             delay_us = 1;

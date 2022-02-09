@@ -2,7 +2,7 @@
 
 pub mod system {
     pub const HEAP_SIZE: usize = 10*1024;
-    pub const SYSTICK_HZ: u32 = 100_000; // 10us ticks
+    pub const SYSTICK_HZ: u32 = 1_000; // 1ms ticks
 }
 
 pub mod ext_flash {

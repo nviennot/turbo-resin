@@ -147,8 +147,9 @@ impl CycleCounter {
     }
 }
 
+#[inline(always)]
 pub fn read_cycles() -> u32 {
     unsafe {
-        CYCLE_COUNTER_SINGLETON.as_ref().unwrap().cycles()
+        CYCLE_COUNTER_SINGLETON.as_ref().unwrap_unchecked().cycles()
     }
 }

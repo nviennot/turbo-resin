@@ -9,10 +9,10 @@ use lvgl::{
 use alloc::format;
 
 use lvgl::cstr_core::CStr;
-use crate::drivers::stepper::{
+use crate::{drivers::stepper::{
     prelude::*,
     Stepper,
-};
+}, consts::stepper::DEFAULT_MAX_SPEED};
 use crate::drivers::zsensor::ZSensor;
 
 #[derive(Debug)]
@@ -85,7 +85,7 @@ impl MoveZ {
 
                 let value = (value as f32)/10000.0;
                 let value = value*value*value;
-                let value = value * 30.0;
+                let value = value * DEFAULT_MAX_SPEED;
 
                 context.user_action = Some(UserAction::SetSpeed(value));
             });
