@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use cortex_m::peripheral::DWT;
 use stm32f1xx_hal::{
     time::Hertz,
     rcc::Clocks,
@@ -119,4 +120,35 @@ pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {
 pub fn delay_ns(duration_ns: u32) {
     let cycles = (3 * duration_ns) / 25;
     cortex_m::asm::delay(cycles);
+}
+
+
+static mut CYCLE_COUNTER_SINGLETON: Option<CycleCounter> = None;
+
+pub struct CycleCounter {
+   dwt: DWT,
+}
+
+impl CycleCounter {
+    pub fn new(mut dwt: DWT) -> Self {
+        //DWT::unlock();
+        dwt.enable_cycle_counter();
+        Self { dwt }
+    }
+
+    pub fn cycles(&self) -> u32 {
+        self.dwt.cyccnt.read()
+    }
+
+    pub fn into_global(self) {
+        unsafe {
+            CYCLE_COUNTER_SINGLETON = Some(self);
+        }
+    }
+}
+
+pub fn read_cycles() -> u32 {
+    unsafe {
+        CYCLE_COUNTER_SINGLETON.as_ref().unwrap().cycles()
+    }
 }

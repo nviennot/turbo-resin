@@ -35,6 +35,7 @@ pub struct Machine {
     pub zsensor: ZSensor,
 }
 
+
 impl Machine {
     pub fn new(cp: cortex_m::Peripherals, dp: pac::Peripherals) -> Self {
         let mut gpioa = dp.GPIOA.split();
@@ -58,6 +59,8 @@ impl Machine {
         // Can't use the HAL. The GD32 is too different.
         let clocks = clock::setup_clock_120m_hxtal(dp.RCC);
         let mut delay = Delay::new(cp.SYST, clocks);
+
+        clock::CycleCounter::new(cp.DWT).into_global();
 
         //--------------------------
         //  External flash
