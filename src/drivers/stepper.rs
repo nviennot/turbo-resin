@@ -193,8 +193,9 @@ impl Stepper {
         self.do_step();
 
         // ~100 cycles to compute self.profile.next()
-        //if let Some(delay_us) = super::clock::count_cycles(|| self.profile.next_()) {
+        //if let Some(delay_us) = super::clock::count_cycles(|| self.profile.next()) {
         if let Some(delay_us) = self.profile.next() {
+            let delay_us = (delay_us + 0.5) as u32;
             self.reload_timer(delay_us, true);
         } else {
             self.stop();

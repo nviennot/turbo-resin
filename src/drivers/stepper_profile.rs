@@ -3,6 +3,15 @@
 // This is an implementation of:
 // An algorithm of linear speed control of a stepper motor in real time
 // by Mihaylo Y. Stoychitch
+// I prefer it to https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/
+
+// It's not ideal to have small delay values because we'll lose precision on the
+// speed requirements. For example, if the desired delay between two steps is
+// 3.49, it will get rounded down to 3. and that's a 16% error of the desired
+// speed. 0.5/MIN_DELAY_VALUE is the maximum speed error that we'll encouted.
+// 5% is the most that we are willing to endure. So the minimum delay we are
+// willing to tolerate is 10.
+const MIN_DELAY_VALUE: u32 = 10;
 
 pub struct StepperProfile {
     f: f32, // timer frequency
@@ -15,9 +24,10 @@ pub struct StepperProfile {
     c0: f32, // initial delay, determined by the acceleration
     ci: f32, // previous delay
 
-    n: u32, // the current step, just to determine whether to do corrections during the first 5 steps.
+    target_c: f32, // delay at desired speed. Set by f/max_speed.
 
-    target_c: f32, // desired speed. Set by f/max_speed.
+    n: u32, // the current step, just to determine whether
+            // to do corrections during the first 5 steps.
 
     remaining_steps: u32,
 }
@@ -33,7 +43,6 @@ impl StepperProfile {
         self_.set_acceleration(acceleration);
         self_.set_decceleration(deceleration);
         self_.set_max_speed(max_speed);
-        self_.ci = self_.c0;
         self_
     }
 
@@ -57,20 +66,27 @@ impl StepperProfile {
         self.remaining_steps = steps;
     }
 
-    pub fn end_approaching(&mut self) -> bool {
-        // it takes n = v**2/(2*deceleration) steps to come to a full stop. Current speed is f/ci
-        self.remaining_steps as f32 * self.ci * self.ci < self.f2_over_2d
+    pub fn end_approaching(&self) -> bool {
+        // The current speed is v=f/ci
+        // it takes n = v**2/(2*deceleration) steps to come to a full stop.
+        // We avoid using num_steps_to_stop(), because there's a division, and
+        // that's 14 cycles. A multiplication is a single cycle.
+        self.remaining_steps as f32 * self.ci * self.ci <= self.f2_over_2d
     }
 
     pub fn num_steps_to_stop(&self) -> u32 {
-        (self.f2_over_2d / (self.ci * self.ci) + 0.5) as u32
+        let n = self.f2_over_2d / (self.ci * self.ci);
+        // We round a to avoid problems with end_approaching(). Note that if we
+        // do an extra step while decelerating, it's not really a big deal.
+        (n+0.5) as u32
     }
 }
 
 impl Iterator for StepperProfile {
-    type Item = u32;
+    type Item = f32;
 
-    // On cortex m4, the maximum number of cycles spent is 105 (during rampup). While cruising, it's 70.
+    // On a Cortex-m4, the maximum number of cycles spent is 105 (during rampup).
+    // While cruising, it's 70.
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining_steps == 0 {
             self.n = 0;
@@ -80,38 +96,38 @@ impl Iterator for StepperProfile {
         let next_ci = if self.n == 0 {
             self.c0
         } else {
-            let ci = self.ci;
+            // Returns the next ci after applying some acceleration
+            // inline to use as little cycles as possible.
+            #[inline(always)]
+            fn apply_acceleration(ci: f32, rate: f32) -> f32 {
+                ci / (1.0 + rate*ci*ci)
+            }
 
+            // The if/elses make it slighly more complicated than what the paper
+            // suggests we assume acceleration/deceleration/max_speed/remaining_steps
+            // to be changing between two steps.
+
+            let ci = self.ci;
             if self.end_approaching() {
                 // We must slow down to avoid missing the target while
                 // respecting the deceleration constraint
-                ci / (1.0 + self.rd*ci*ci)
+                apply_acceleration(ci, self.rd)
             } else if self.target_c == ci {
                 // We are cruising.
                 ci
             } else if self.target_c < ci {
-                // We are going too slow.
-                let next_ci = ci / (1.0 + self.ra*ci*ci);
-                if self.target_c >= next_ci {
-                    // Tried to speed up too much
-                    self.target_c
-                } else {
-                    next_ci
-                }
+                // We are going too slow. Accelerate, but don't go over self.target_c.
+                max(apply_acceleration(ci, self.ra), self.target_c)
             } else {
                 // We are going too fast. The max_speed may have been adjusted.
-                let next_ci = ci / (1.0 + self.rd*ci*ci);
-                if self.target_c <= next_ci {
-                    // Tried to slow down too much
-                    self.target_c
-                } else {
-                    next_ci
-                }
+                // Deccelerate, but don't go under self.target_c.
+                min(apply_acceleration(ci, self.rd), self.target_c)
             }
         };
 
+        // These are the early/late step corrections as decribed in the paper.
+        // Not sure how critical this is, but it's fairly cheap to implement.
         let next_ci = {
-            // These are the early steps corrections as decribed in the paper.
             static CORRECTION: [f32; 5] = [
                 1.0 + 0.08/1.0,
                 1.0 + 0.08/2.0,
@@ -130,12 +146,23 @@ impl Iterator for StepperProfile {
         self.remaining_steps -= 1;
         self.n += 1;
 
-        Some((next_ci + 0.5) as u32)
+        Some(next_ci)
     }
 }
 
 #[inline(always)]
-pub fn sqrt(v: f32) -> f32 {
-    use core::intrinsics::sqrtf32;
-    unsafe { sqrtf32(v) }
+fn sqrt(v: f32) -> f32 {
+    unsafe { core::intrinsics::sqrtf32(v) }
+}
+
+// Here we don't use the f32::min, because it's slower. It doesn't inline, and
+// does a bunch of extra stuff (see the assembly).
+#[inline(always)]
+fn min(a: f32, b: f32) -> f32 {
+    if a <= b { a } else { b }
+}
+
+#[inline(always)]
+fn max(a: f32, b: f32) -> f32 {
+    if a >= b { a } else { b }
 }
