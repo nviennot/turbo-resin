@@ -13,7 +13,8 @@ use stm32f1xx_hal::{
     pwm::Channel,
 };
 
-use stepgen::Stepgen;
+//use stepgen::Stepgen;
+use super::stepper_profile::StepperProfile;
 
 use crate::{consts::stepper::*, runtime::debug, drivers::clock::delay_ns};
 const STEPS_PER_MM: f32 = (DRIVER_MICROSTEPS * FULL_STEPS_PER_REVOLUTION) as f32 / SCREW_THREAD_PITCH_MM;
@@ -80,13 +81,12 @@ pub enum Direction {
 
 use prelude::*;
 
-
 pub struct Stepper {
     step_timer: CountDownTimer<TIM7>,
     step: PE5<Output<PushPull>>,
     dir: PE4<Output<PushPull>>,
     enable: PE6<Output<PushPull>>,
-    profile: Stepgen,
+    profile: StepperProfile,
     pub current_position: Steps,
     pub target: Steps,
     pub max_speed: Steps,
@@ -143,6 +143,9 @@ impl Stepper {
         // We are going with 1/16 microstepping.
         mode0.into_floating_input(gpioc_crl); // HiZ
         mode1.into_push_pull_output_with_state(gpioc_crl, PinState::High); // 1
+        //mode0.into_push_pull_output_with_state(gpioc_crl, PinState::High); // 1
+        //mode1.into_floating_input(gpioc_crl); // HiZ
+
 
         // New decay setting takes 10us to take effect.
 
@@ -166,10 +169,14 @@ impl Stepper {
         pwm.set_duty(Channel::C4, (pwm.get_max_duty() * 8) / 10);
         pwm.enable(Channel::C4);
 
-        let mut profile = Stepgen::new(1_000_000);
+        let profile = StepperProfile::new(
+            1_000_000.0,
+            MAX_ACCELERATION.mm().0 as f32,
+            MAX_DECELERATION.mm().0 as f32,
+            DEFAULT_MAX_SPEED.mm().0 as f32,
+        );
 
-        profile.set_acceleration((MAX_ACCELERATION.mm().0 as u32) << 8).unwrap();
-        profile.set_target_speed((DEFAULT_MAX_SPEED.mm().0 as u32) << 8).unwrap();
+        //profile.test();
 
         // Value doesn't matter here, it will be re-initialized later.
         let step_timer = step_timer.start_count_down(10.hz());
@@ -185,11 +192,9 @@ impl Stepper {
         let _ = self.step_timer.wait(); // clears the interrupt flag
         self.do_step();
 
-        // 85 cycles accelerating, 65 cycles plateau, 74 coming back. 38 when stopping.
-
+        // ~100 cycles to compute self.profile.next()
+        //if let Some(delay_us) = super::clock::count_cycles(|| self.profile.next_()) {
         if let Some(delay_us) = self.profile.next() {
-        //if let Some(delay_us) = super::clock::count_cycles(|| self.profile.next()) {
-            let delay_us = (delay_us + 128) >> 8;
             self.reload_timer(delay_us, true);
         } else {
             self.stop();
@@ -198,7 +203,6 @@ impl Stepper {
     }
 
     fn reload_timer(&mut self, mut delay_us: u32, since_last_interrupt: bool) {
-        //debug!("delay: {}", delay_us);
         if since_last_interrupt {
             delay_us = delay_us.saturating_sub(self.step_timer.micros_since());
         }
@@ -238,7 +242,7 @@ impl Stepper {
     // If max_speed is None, it goes back to default.
     pub fn set_max_speed(&mut self, max_speed: Option<Steps>) {
         self.max_speed = max_speed.unwrap_or(DEFAULT_MAX_SPEED.mm());
-        self.profile.set_target_speed((self.max_speed.0 as u32) << 8).unwrap();
+        self.profile.set_max_speed(self.max_speed.0 as f32);
     }
 
     // to current position
@@ -261,8 +265,8 @@ impl Stepper {
         };
 
         self.set_direction(dir);
-        let steps = self.profile.current_step() + steps;
-        self.profile.set_target_step(steps).unwrap();
+        // steps-1 because we are going to do the first step immedately.
+        self.profile.set_remaining_steps(steps-1);
 
         // We need to hold the enable pin high for 5us before we can start stepping the motor.
         self.enable.set_high();
@@ -276,11 +280,13 @@ impl Stepper {
     }
 
     pub fn controlled_stop(&mut self) {
-        self.profile.set_target_step(self.profile.current_step()).unwrap();
+        self.profile.set_remaining_steps(
+            self.profile.num_steps_to_stop()
+        );
     }
 
     pub fn stop(&mut self) {
-        self.profile.set_target_step(self.profile.current_step()).unwrap();
+        self.profile.set_remaining_steps(0);
         self.target = self.current_position;
 
         self.step_timer.unlisten(Event::Update);

@@ -8,3 +8,5 @@ pub mod stepper;
 pub mod init;
 pub mod lcd;
 pub mod zsensor;
+
+pub mod stepper_profile;

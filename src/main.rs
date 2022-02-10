@@ -6,6 +6,8 @@
 #![feature(int_abs_diff)]
 #![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
 
+#![feature(core_intrinsics)]
+
 mod drivers;
 mod consts;
 mod ui;

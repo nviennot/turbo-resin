@@ -17,8 +17,6 @@ gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", features = ["gd32f
 spi-memory = "0.2" # For the external flash access. Maybe not useful at this point.
 embedded-graphics = "0.7"
 embedded-graphics-core = "0.3"
-stepgen = "0.1"
-#ramp-maker = {version = "0.2", features = ["libm"]}
 nb = "1"
 lvgl = { git = "https://github.com/nviennot/lvgl-rs.git", features =["logger", "lvgl_alloc"] }
 

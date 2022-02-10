@@ -20,8 +20,9 @@ pub mod stepper {
     pub const FULL_STEPS_PER_REVOLUTION: u32 = 200;
     pub const SCREW_THREAD_PITCH_MM: f32 = 2.0;
 
-    pub const DEFAULT_MAX_SPEED: f32 = 20.0; // mm/s
+    pub const DEFAULT_MAX_SPEED: f32 = 30.0; // mm/s
     pub const MAX_ACCELERATION: f32 = 25.0; // mm/s^2
+    pub const MAX_DECELERATION: f32 = 100.0; // mm/s^2
 }
 
 pub mod touch_screen {
