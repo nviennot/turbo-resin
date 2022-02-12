@@ -13,7 +13,6 @@ mod consts;
 mod ui;
 
 use alloc::format;
-use drivers::stepper::Direction;
 use lvgl::style::State;
 use stm32f1xx_hal::pac::Interrupt;
 use consts::system::*;
@@ -22,6 +21,11 @@ use drivers::{
     init::{Systick, Machine, prelude::*},
     touch_screen::{TouchScreenResult, TouchEvent},
     display::Display as RawDisplay,
+
+    zaxis::{
+        zsensor::ZSensor,
+        stepper::{Stepper, Direction},
+    }
 };
 
 use embedded_graphics::pixelcolor::Rgb565;
@@ -92,7 +96,7 @@ mod app {
     /* resources shared across RTIC tasks */
     #[shared]
     struct Shared {
-        stepper: drivers::stepper::Stepper,
+        stepper: Stepper,
         #[lock_free]
         touch_screen: drivers::touch_screen::TouchScreen,
         last_touch_event: Option<TouchEvent>,
@@ -107,7 +111,7 @@ mod app {
         display: Display::<RawDisplay>,
         move_z_ui: Screen<ui::MoveZ>,
         lcd: drivers::lcd::Lcd,
-        zsensor: drivers::zsensor::ZSensor,
+        zsensor: ZSensor,
     }
 
     fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>, InputDevice<TouchPad>) {

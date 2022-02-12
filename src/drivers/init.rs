@@ -11,14 +11,16 @@ use crate::drivers::{
     ext_flash::ExtFlash,
     display::Display,
     touch_screen::TouchScreen,
-    stepper::Stepper,
+    zaxis::{
+        stepper::Stepper,
+        zsensor::ZSensor,
+    },
     lcd::Lcd,
     clock,
 };
 
 use crate::consts::system::*;
 
-use super::zsensor::ZSensor;
 
 pub type Systick = systick_monotonic::Systick<{ SYSTICK_HZ }>;
 pub mod prelude {
@@ -98,6 +100,16 @@ impl Machine {
         );
 
         //--------------------------
+        // LCD Panel
+        //--------------------------
+        let lcd = Lcd::new(
+            gpiod.pd12,
+            gpioa.pa4, gpioa.pa5, gpioa.pa6, gpioa.pa7,
+            dp.SPI1,
+            &clocks, &mut gpioa.crl, &mut gpiod.crh, &mut afio.mapr,
+        );
+
+        //--------------------------
         //  Stepper motor (Z-axis)
         //--------------------------
 
@@ -115,17 +127,8 @@ impl Machine {
             gpioc.pc1, gpioc.pc2,
             gpioa.pa3,
             Timer::new(dp.TIM2, &clocks), Timer::new(dp.TIM7, &clocks),
-            &mut gpioa.crl, &mut gpioc.crl, &mut gpioe.crl, &mut afio.mapr,
-        );
-
-        //--------------------------
-        // LCD Panel
-        //--------------------------
-        let lcd = Lcd::new(
-            gpiod.pd12,
-            gpioa.pa4, gpioa.pa5, gpioa.pa6, gpioa.pa7,
-            dp.SPI1,
-            &clocks, &mut gpioa.crl, &mut gpiod.crh, &mut afio.mapr,
+            &mut gpioa.crl, gpioc.crl, &mut gpioe.crl, &mut afio.mapr,
+            &clocks,
         );
 
         //--------------------------
