@@ -13,7 +13,7 @@ use crate::drivers::{
     touch_screen::TouchScreen,
     zaxis::{
         stepper::Stepper,
-        zsensor::ZSensor,
+        sensor::Sensor,
         drv8424::Drv8424,
     },
     lcd::Lcd,
@@ -35,9 +35,8 @@ pub struct Machine {
     pub stepper: Stepper,
     pub systick: Systick,
     pub lcd: Lcd,
-    pub zsensor: ZSensor,
+    pub zsensor: Sensor,
 }
-
 
 impl Machine {
     pub fn new(cp: cortex_m::Peripherals, dp: pac::Peripherals) -> Self {
@@ -116,7 +115,7 @@ impl Machine {
 
         let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
 
-        let zsensor = ZSensor::new(
+        let zsensor = Sensor::new(
             pb3,
             // pb4,
             &mut gpiob.crl,

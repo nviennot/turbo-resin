@@ -16,11 +16,11 @@ pub mod display {
 }
 
 pub mod stepper {
+    pub const STEP_TIMER_FREQ: u32 = 1_000_000;
     // It's not ideal to have small delay values because we'll lose precision on
     // the speed requirements. Also, small delays means that we'll spend too
     // much time spending CPU cycles stepping the motor.
-    pub const MIN_DELAY_VALUE: f32 = 20.0;
-    pub const STEP_TIMER_FREQ: u32 = 1_000_000;
+    pub const STEP_TIMER_MIN_DELAY_VALUE: f32 = 20.0;
 
     pub const DRIVER_MICROSTEPS: u32 = 256;
     pub const FULL_STEPS_PER_REVOLUTION: u32 = 200;

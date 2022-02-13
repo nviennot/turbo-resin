@@ -18,12 +18,12 @@ use stm32f1xx_hal::pac::Interrupt;
 use consts::system::*;
 use consts::display::*;
 use drivers::{
-    init::{Systick, Machine, prelude::*},
+    machine::{Systick, Machine, prelude::*},
     touch_screen::{TouchScreenResult, TouchEvent},
     display::Display as RawDisplay,
 
     zaxis::{
-        zsensor::ZSensor,
+        sensor::Sensor,
         stepper::Stepper,
     }
 };
@@ -111,7 +111,7 @@ mod app {
         display: Display::<RawDisplay>,
         move_z_ui: Screen<ui::MoveZ>,
         lcd: drivers::lcd::Lcd,
-        zsensor: ZSensor,
+        zsensor: Sensor,
     }
 
     fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>, InputDevice<TouchPad>) {

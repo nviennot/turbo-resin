@@ -12,7 +12,7 @@ use lvgl::cstr_core::CStr;
 use crate::{drivers::zaxis::{
     prelude::*,
     stepper::Stepper,
-    zsensor::ZSensor,
+    sensor::Sensor,
 }, consts::stepper::DEFAULT_MAX_SPEED};
 
 #[derive(Debug)]
@@ -101,7 +101,7 @@ impl MoveZ {
 
         let btn_calibrate = Btn::new(&mut screen).apply(|obj| {
             Label::new(obj)
-                .set_text(&CStr::from_bytes_with_nul(b"Calibrate\0").unwrap());
+                .set_text(&CStr::from_bytes_with_nul(b"Move to Z=0\0").unwrap());
             obj
             .align_to(&position_label, Align::OutBottomMid, 0, spacing)
             .add_flag(Flag::CHECKABLE)
@@ -115,7 +115,7 @@ impl MoveZ {
         });
 
         Label::new(&mut screen).apply(|obj| { obj
-            .set_text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.1\0").unwrap())
+            .set_text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.2\0").unwrap())
             .align_to(&screen, Align::BottomRight, -5, -5);
         });
 
@@ -137,7 +137,7 @@ impl MoveZ {
 
     pub fn update(&mut self,
         stepper: &mut impl rtic::Mutex<T=Stepper>,
-        zsensor: &mut ZSensor,
+        zsensor: &mut Sensor,
     ) {
         match self.user_action.take() {
             Some(UserAction::MoveUp) => {

@@ -10,7 +10,7 @@ use crate::debug;
 use super::prelude::*;
 use super::stepper::Stepper;
 
-pub struct ZSensor {
+pub struct Sensor {
     bottom: PB3<Input<PullUp>>,
 }
 
@@ -25,7 +25,7 @@ const FINE_HOMING_START_POSITION_MM: f32 = 0.5;
 // 0.5mm/s is very conservative
 const FINE_HOMING_SPEED_MM_PER_SEC: f32 = 0.5;
 
-impl ZSensor {
+impl Sensor {
     pub fn new(
         bottom: PB3<Input<Floating>>,
         gpiob_crl: &mut Cr<CRL, 'B'>,

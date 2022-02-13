@@ -9,6 +9,7 @@ use crate::consts::stepper::*;
 
 const TIMER_FREQ: f32 = STEP_TIMER_FREQ as f32;
 const MAX_STEP_MULTIPLIER: u32 = DRIVER_MICROSTEPS;
+const MIN_DELAY_VALUE: f32 = STEP_TIMER_MIN_DELAY_VALUE;
 
 pub struct StepGenerator {
     ra: f32, // acceleration constant like in the paper
@@ -129,8 +130,6 @@ impl Iterator for StepGenerator {
         }
 
         self.adjust_step_multiplier();
-
-
         let m = self.step_multiplier;
 
         let next_ci = if self.n == 0 {
@@ -191,6 +190,9 @@ impl Iterator for StepGenerator {
         self.remaining_steps = self.remaining_steps.checked_sub(m).unwrap();
         self.n += m;
         self.ci = next_ci;
+
+        // FIXME next_ci*m may be under MIN_DELAY_VALUE, just for a single iteration.
+        // Next round, we'll have it fixed. But that's not great.
 
         Some((next_ci*(m as f32), m))
     }
