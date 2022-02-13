@@ -7,8 +7,8 @@ use stm32f1xx_hal::{
 };
 
 use crate::debug;
-use super::stepper::prelude::*;
-use super::stepper::{Stepper, Steps};
+use super::prelude::*;
+use super::stepper::Stepper;
 
 pub struct ZSensor {
     bottom: PB3<Input<PullUp>>,
@@ -52,7 +52,7 @@ impl ZSensor {
         while !stepper.lock(|s| s.is_idle()) {}
 
         stepper.lock(|s| {
-            s.set_max_speed(Some(max_speed));
+            s.set_max_speed(max_speed);
         });
 
         debug!("1 Going to the bottom FAST");
@@ -76,7 +76,7 @@ impl ZSensor {
         debug!("4 Going back up a little");
         stepper.lock(|s| {
             // Fairly arbitrary. Too fast and it overshoots, and we wait longer to go down slow.
-            s.set_max_speed(Some((4.0*FINE_HOMING_SPEED_MM_PER_SEC).mm()));
+            s.set_max_speed((4.0*FINE_HOMING_SPEED_MM_PER_SEC).mm());
             s.set_target(Steps::MAX);
         });
 
@@ -90,7 +90,7 @@ impl ZSensor {
 
         debug!("6 Going back down, SLOW");
         stepper.lock(|s| {
-            s.set_max_speed(Some(FINE_HOMING_SPEED_MM_PER_SEC.mm()));
+            s.set_max_speed(FINE_HOMING_SPEED_MM_PER_SEC.mm());
             s.set_target(Steps::MIN);
         });
 
@@ -105,7 +105,7 @@ impl ZSensor {
 
         // Going to 0 for example.
         let sensor_position = stepper.lock(|s| {
-            s.set_max_speed(Some(Steps(max_speed.0/2)));
+            s.set_max_speed(Steps(max_speed.0/2));
             s.set_target(0.mm());
         });
         while !stepper.lock(|s| s.is_idle()) {}

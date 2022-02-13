@@ -59,8 +59,11 @@ impl StepGenerator {
     }
 
     pub fn set_max_speed(&mut self, max_speed: f32) {
-        let f = TIMER_FREQ;
-        self.target_c = f/max_speed;
+        self.target_c = TIMER_FREQ/max_speed;
+    }
+
+    pub fn get_max_speed(&self) -> f32 {
+        TIMER_FREQ/self.target_c
     }
 
     pub fn set_remaining_steps(&mut self, steps: u32) {
@@ -113,7 +116,7 @@ impl StepGenerator {
 impl Iterator for StepGenerator {
     type Item = (f32, u32);
 
-    // On a Cortex-m4, This takes between 114 cycles and 150 cycles.
+    // On a Cortex-m4, This takes between 113 cycles and 150 cycles.
     // Use the test() function below to see this in action.
     fn next(&mut self) -> Option<Self::Item> {
         if self.remaining_steps == 0 {

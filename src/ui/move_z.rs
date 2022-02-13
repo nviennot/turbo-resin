@@ -10,7 +10,7 @@ use alloc::format;
 
 use lvgl::cstr_core::CStr;
 use crate::{drivers::zaxis::{
-    stepper::prelude::*,
+    prelude::*,
     stepper::Stepper,
     zsensor::ZSensor,
 }, consts::stepper::DEFAULT_MAX_SPEED};
@@ -153,7 +153,7 @@ impl MoveZ {
                 self.btn_move_up.add_state(State::DISABLED);
                 stepper.lock(|s| s.controlled_stop());
             }
-            Some(UserAction::SetSpeed(v)) => stepper.lock(|s| s.set_max_speed(Some(v.mm()))),
+            Some(UserAction::SetSpeed(v)) => stepper.lock(|s| s.set_max_speed(v.mm())),
             Some(UserAction::Calibrate) => {
                 zsensor.calibrate(stepper);
                 self.btn_calibrate.clear_state(State::CHECKED | State::DISABLED);
@@ -161,9 +161,8 @@ impl MoveZ {
             None => {}
         }
 
-
-        let (is_idle, current_position, max_speed, mult) = stepper.lock(|s| {
-            (s.is_idle(), s.current_position, s.max_speed, s.step_multiplier)
+        let (is_idle, current_position, max_speed) = stepper.lock(|s| {
+            (s.is_idle(), s.current_position, s.get_max_speed())
         });
 
         if is_idle {
@@ -173,7 +172,7 @@ impl MoveZ {
 
         // set_text() makes a copy of the string internally.
         self.position_label.set_text(&CStr::from_bytes_with_nul(
-            format!("Position: {:.2} mm at x{}\0", current_position.as_mm(), mult).as_bytes()
+            format!("Position: {:.2} mm\0", current_position.as_mm()).as_bytes()
         ).unwrap());
 
         self.speed_label.set_text(&CStr::from_bytes_with_nul(

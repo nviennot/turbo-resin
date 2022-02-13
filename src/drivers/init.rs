@@ -14,6 +14,7 @@ use crate::drivers::{
     zaxis::{
         stepper::Stepper,
         zsensor::ZSensor,
+        drv8424::Drv8424,
     },
     lcd::Lcd,
     clock,
@@ -121,15 +122,16 @@ impl Machine {
             &mut gpiob.crl,
         );
 
-        let stepper = Stepper::new(
+        let drv8424 = Drv8424::new(
             gpioe.pe4, gpioe.pe5, gpioe.pe6,
             gpioc.pc3, gpioc.pc0,
             gpioc.pc1, gpioc.pc2,
             gpioa.pa3,
-            Timer::new(dp.TIM2, &clocks), Timer::new(dp.TIM7, &clocks),
+            Timer::new(dp.TIM2, &clocks),
             &mut gpioa.crl, gpioc.crl, &mut gpioe.crl, &mut afio.mapr,
-            &clocks,
         );
+
+        let stepper = Stepper::new(drv8424, Timer::new(dp.TIM7, &clocks));
 
         //--------------------------
         // Systicks for RTIC

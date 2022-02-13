@@ -24,7 +24,7 @@ use drivers::{
 
     zaxis::{
         zsensor::ZSensor,
-        stepper::{Stepper, Direction},
+        stepper::Stepper,
     }
 };
 
