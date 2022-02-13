@@ -5,12 +5,21 @@ sections = []
 
 for line in fileinput.input():
     line = line.strip()
+
+    # what a mess. But whatever
+    (idx, name, size, vma, lma, t) = [None]*6
+
     try:
         (idx, name, size, vma, lma, t) = line.split()
-        if t == "TEXT" or t == "DATA" or t == "BSS":
-            sections.append( (name, int(size, base=16), int(vma, base=16), int(lma, base=16), t) )
-    except:
-        pass
+    except ValueError as e:
+        try:
+            (idx, name, size, vma, t) = line.split()
+            lma = vma
+        except ValueError as e:
+            continue
+
+    if t == "TEXT" or t == "DATA" or t == "BSS":
+        sections.append( (name, int(size, base=16), int(vma, base=16), int(lma, base=16), t) )
 
 sections.sort(key=lambda x: x[2])
 

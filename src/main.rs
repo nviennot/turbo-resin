@@ -5,61 +5,195 @@
 #![feature(alloc_error_handler)]
 #![feature(int_abs_diff)]
 #![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
+#![feature(type_alias_impl_trait)]
 
 #![feature(core_intrinsics)]
+
+extern crate alloc;
 
 mod drivers;
 mod consts;
 mod ui;
+mod util;
 
-use alloc::format;
-use lvgl::style::State;
-use stm32f1xx_hal::pac::Interrupt;
-use consts::system::*;
-use consts::display::*;
-use drivers::{
-    machine::{Systick, Machine, prelude::*},
-    touch_screen::{TouchScreenResult, TouchEvent},
-    display::Display as RawDisplay,
-
-    zaxis::{
-        sensor::Sensor,
-        stepper::Stepper,
-    }
-};
-
-use embedded_graphics::pixelcolor::Rgb565;
-
-use lvgl::core::{
-    Lvgl, TouchPad, Display, InputDevice, ObjExt
-};
-
-
-pub(crate) use runtime::debug;
-
-extern crate alloc;
-
+use core::cell::RefCell;
 use core::mem::MaybeUninit;
 
-use lvgl::core::Screen;
+use lvgl::core::{Lvgl, TouchPad, Display, ObjExt};
+
+use embassy::{
+    time::{Duration, Timer},
+    util::Forever,
+    executor::InterruptExecutor,
+    interrupt::InterruptExt,
+    channel::signal::Signal,
+    blocking_mutex::CriticalSectionMutex as Mutex,
+};
+use embassy_stm32::{Config, interrupt};
+
+use consts::display::*;
+use drivers::{
+    machine::Machine,
+    touch_screen::{TouchEvent, TouchScreen},
+    display::Display as RawDisplay,
+    zaxis,
+};
+use util::SharedWithInterrupt;
+pub(crate) use runtime::debug;
+
+
+static LAST_TOUCH_EVENT: Mutex<RefCell<Option<TouchEvent>>> = Mutex::new(RefCell::new(None));
+static Z_AXIS: Forever<zaxis::MotionControlAsync> = Forever::new();
+static USER_ACTION: Signal<crate::ui::UserAction> = Signal::new();
+
+mod maximum_priority_tasks {
+    use super::*;
+
+    #[interrupt]
+    fn TIM7() {
+        unsafe { Z_AXIS.steal().on_interrupt() }
+    }
+}
+
+mod high_priority_tasks {
+    use super::*;
+
+    #[embassy::task]
+    pub async fn touch_screen_task(mut touch_screen: TouchScreen) {
+        loop {
+            // What should happen if lvgl is not pumping click events fast enought?
+            // We have different solutions. But here we go with last event wins.
+            // If we had a keyboard, we would queue up events to avoid loosing key
+            // presses.
+            let touch_event = touch_screen.get_next_touch_event().await;
+            LAST_TOUCH_EVENT.lock(|e| *e.borrow_mut() = touch_event);
+        }
+    }
+
+    #[embassy::task]
+    pub async fn lvgl_tick_task(mut lvgl_ticks: lvgl::core::Ticks) {
+        loop {
+            lvgl_ticks.inc(1);
+            Timer::after(Duration::from_millis(1)).await
+        }
+    }
+
+    #[embassy::task]
+    pub async fn main_task() {
+        let z_axis = unsafe { Z_AXIS.steal() };
+        // Here is the control center, coordinating the printer hardware.
+        // We react to user input, and do something with it.
+        loop {
+            let user_action = USER_ACTION.wait().await;
+            debug!("Executing user action: {:?}", user_action);
+            user_action.do_user_action(z_axis).await;
+            debug!("Done executing user action");
+        }
+    }
+}
+
+mod low_priority_tasks {
+    use crate::drivers::touch_screen;
+
+    use super::*;
+
+    pub fn idle_task(
+        mut lvgl: Lvgl,
+        mut display: Display<RawDisplay>,
+    ) -> ! {
+        let mut lvgl_input_device = lvgl::core::InputDevice::<TouchPad>::new(&mut display);
+
+        let mut ui = ui::MoveZ::new(&display, &USER_ACTION);
+        display.load_screen(&mut ui);
+
+        let z_axis = unsafe { Z_AXIS.steal() };
+        loop {
+            ui.context().as_mut().unwrap().update_ui(z_axis);
+
+            LAST_TOUCH_EVENT.lock(|e| {
+                *lvgl_input_device.state() = touch_screen::into_lvgl_event(&e.borrow());
+            });
+
+            lvgl.run_tasks();
+            display.backlight.set_high();
+        }
+    }
+}
+
+fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>) {
+    use embedded_graphics::pixelcolor::Rgb565;
+
+    let mut lvgl = Lvgl::new();
+    lvgl.register_logger(|s| rtt_target::rprint!(s));
+    // Display init with its draw buffer
+    static mut DRAW_BUFFER: [MaybeUninit<Rgb565>; LVGL_BUFFER_LEN] =
+        [MaybeUninit::<Rgb565>::uninit(); LVGL_BUFFER_LEN];
+    let display = Display::new(&lvgl, display, unsafe { &mut DRAW_BUFFER });
+    (lvgl, display)
+}
+
+fn main() -> ! {
+    rtt_target::rtt_init_print!();
+
+    let machine = {
+        let p = {
+            // We are doing the clock init here because of the gigadevice differences.
+            let clk = crate::drivers::clock::setup_clock_120m_hxtal();
+            let clk = crate::drivers::clock::embassy_stm32_clock_from(&clk);
+            unsafe { embassy_stm32::rcc::set_freqs(clk) };
+
+            // Note: TIM3 is taken for time accounting. It's configurable in Cargo.toml
+            embassy_stm32::init(Config::default())
+        };
+
+        let cp = cortex_m::Peripherals::take().unwrap();
+        Machine::new(cp, p)
+    };
+
+    Z_AXIS.put(zaxis::MotionControlAsync::new(
+        SharedWithInterrupt::new(machine.stepper),
+        machine.z_bottom_sensor,
+    ));
+
+    let (lvgl, display) = lvgl_init(machine.display);
+
+    let mut lcd = machine.lcd;
+    lcd.draw_waves(16);
+
+    // Maximum priority for the motion control of the stepper motor.
+    // as we need to deliver precise pulses with micro-second accuracy.
+    {
+        let irq: interrupt::TIM7 = unsafe { ::core::mem::transmute(()) };
+        irq.set_priority(interrupt::Priority::P5);
+        irq.unpend();
+        irq.enable();
+    }
+
+    // High priority executor. It interrupts the low priority tasks (UI rendering)
+    {
+        let lvgl_ticks = lvgl.ticks();
+        let touch_screen = machine.touch_screen;
+        let irq = interrupt::take!(CAN1_RX0);
+        irq.set_priority(interrupt::Priority::P6);
+        static EXECUTOR_HIGH: Forever<InterruptExecutor<interrupt::CAN1_RX0>> = Forever::new();
+        let executor = EXECUTOR_HIGH.put(InterruptExecutor::new(irq));
+        executor.start(|spawner| {
+            spawner.spawn(high_priority_tasks::touch_screen_task(touch_screen)).unwrap();
+            spawner.spawn(high_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
+            spawner.spawn(high_priority_tasks::main_task()).unwrap();
+        });
+    }
+
+    // The idle task does UI drawing continuously.
+    low_priority_tasks::idle_task(lvgl, display)
+}
+
+// Wrap main(), otherwise auto-completion with rust-analyzer doesn't work.
+#[cortex_m_rt::entry]
+fn main_() -> ! { main() }
 
 mod runtime {
     use super::*;
-
-    /*
-    #[global_allocator]
-    static ALLOCATOR: alloc_cortex_m::CortexMHeap = alloc_cortex_m::CortexMHeap::empty();
-
-    pub fn init_heap() {
-        // Using cortex_m_rt::heap_start() is bad. It doesn't tell us if our
-        // HEAP_SIZE is too large and we will fault accessing non-existing RAM
-        // Instead, we'll allocate a static buffer for our heap.
-        unsafe {
-            static mut HEAP: [MaybeUninit<u8>; HEAP_SIZE] = [MaybeUninit::uninit(); HEAP_SIZE];
-            ALLOCATOR.init((&mut HEAP).as_ptr() as usize, HEAP_SIZE);
-        }
-    }
-    */
 
     #[alloc_error_handler]
     fn oom(l: core::alloc::Layout) -> ! {
@@ -80,170 +214,3 @@ mod runtime {
     }
     pub(crate) use debug;
 }
-
-#[rtic::app(
-    device = stm32f1xx_hal::stm32, peripherals = true,
-    // Picked random interrupts that we'll never use. RTIC will use this to schedule tasks.
-    dispatchers=[CAN_RX1, CAN_SCE, CAN2_RX0, CAN2_RX1]
-)]
-mod app {
-
-    use super::*;
-
-    #[monotonic(binds = SysTick, default = true)]
-    type MonotonicClock = Systick;
-
-    /* resources shared across RTIC tasks */
-    #[shared]
-    struct Shared {
-        stepper: Stepper,
-        #[lock_free]
-        touch_screen: drivers::touch_screen::TouchScreen,
-        last_touch_event: Option<TouchEvent>,
-    }
-
-    /* resources local to specific RTIC tasks */
-    #[local]
-    struct Local {
-        lvgl: Lvgl,
-        lvgl_ticks: lvgl::core::Ticks,
-        lvgl_input_device: InputDevice::<TouchPad>,
-        display: Display::<RawDisplay>,
-        move_z_ui: Screen<ui::MoveZ>,
-        lcd: drivers::lcd::Lcd,
-        zsensor: Sensor,
-    }
-
-    fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>, InputDevice<TouchPad>) {
-        let mut lvgl = Lvgl::new();
-
-        // Register logger
-        lvgl.register_logger(|s| rtt_target::rprint!(s));
-
-        static mut DRAW_BUFFER: [MaybeUninit<Rgb565>; LVGL_BUFFER_LEN] =
-            [MaybeUninit::<Rgb565>::uninit(); LVGL_BUFFER_LEN];
-
-        let mut display = Display::new(&lvgl, display, unsafe { &mut DRAW_BUFFER });
-
-        let input_device = lvgl::core::InputDevice::<TouchPad>::new(&mut display);
-
-        (lvgl, display, input_device)
-    }
-
-    #[init]
-    fn init(ctx: init::Context) -> (Shared, Local, init::Monotonics) {
-        rtt_target::rtt_init_print!();
-        debug!("Init...");
-
-        lvgl::core::Lvgl::new();
-
-        let machine = Machine::new(ctx.core, ctx.device);
-
-        let display = machine.display;
-        let systick = machine.systick;
-        let stepper = machine.stepper;
-        let touch_screen = machine.touch_screen;
-        let lcd = machine.lcd;
-        let zsensor = machine.zsensor;
-
-        let (mut lvgl, mut display, lvgl_input_device) = lvgl_init(display);
-
-        let lvgl_ticks = lvgl.ticks();
-        lvgl_tick_task::spawn().unwrap();
-
-        let last_touch_event = None;
-
-        let mut move_z_ui = ui::MoveZ::new(&display);
-        // Fill the display with something before turning it on.
-        display.load_screen(&mut move_z_ui);
-        lvgl.run_tasks();
-        display.backlight.set_high();
-
-        /*
-        let ext_flash = machine.ext_flash;
-        let delay = machine.delay;
-        */
-
-        debug!("Init complete");
-
-        (
-            Shared { stepper, touch_screen, last_touch_event },
-            Local { lvgl, lvgl_ticks, lvgl_input_device, display, move_z_ui, lcd, zsensor },
-            init::Monotonics(systick),
-        )
-    }
-
-    #[task(priority = 5, binds = TIM7, shared = [stepper])]
-    fn stepper_interrupt(mut ctx: stepper_interrupt::Context) {
-        ctx.shared.stepper.lock(|s| s.on_interrupt());
-    }
-
-    #[task(priority = 3, local = [lvgl_ticks], shared = [])]
-    fn lvgl_tick_task(ctx: lvgl_tick_task::Context) {
-        // Not very precise (by the time we get here, some time has passed
-        // already), but good enough
-        lvgl_tick_task::spawn_after(1.millis()).unwrap();
-        ctx.local.lvgl_ticks.inc(1);
-    }
-
-    #[task(priority = 2, binds = EXTI9_5, shared = [touch_screen])]
-    fn touch_screen_pen_down_interrupt(ctx: touch_screen_pen_down_interrupt::Context) {
-        use TouchScreenResult::*;
-        match ctx.shared.touch_screen.on_pen_down_interrupt() {
-            DelayMs(delay_ms) => {
-                cortex_m::peripheral::NVIC::mask(Interrupt::EXTI9_5);
-                touch_screen_sampling_task::spawn_after((delay_ms as u64).millis()).unwrap();
-            }
-            Done(None) => {},
-            Done(Some(_)) => unreachable!(),
-        }
-    }
-
-    #[task(priority = 2, local = [], shared = [touch_screen, last_touch_event])]
-    fn touch_screen_sampling_task(mut ctx: touch_screen_sampling_task::Context) {
-        use TouchScreenResult::*;
-        match ctx.shared.touch_screen.on_delay_expired() {
-            DelayMs(delay_ms) => {
-                touch_screen_sampling_task::spawn_after((delay_ms as u64).millis()).unwrap();
-            },
-            Done(touch_event) => {
-                ctx.shared.last_touch_event.lock(|t| *t = touch_event);
-                unsafe { cortex_m::peripheral::NVIC::unmask(Interrupt::EXTI9_5); }
-            },
-        }
-    }
-
-    #[idle(local = [lvgl, lvgl_input_device, display, move_z_ui, lcd, zsensor], shared = [last_touch_event, stepper])]
-    fn idle(mut ctx: idle::Context) -> ! {
-        let lvgl = ctx.local.lvgl;
-        let lvgl_input_device = ctx.local.lvgl_input_device;
-        let zsensor = ctx.local.zsensor;
-        let move_z_ui = ctx.local.move_z_ui.context().as_mut().unwrap();
-
-        loop {
-            ctx.shared.last_touch_event.lock(|e| {
-                *lvgl_input_device.state() = if let Some(ref e) = e {
-                    TouchPad::Pressed { x: e.x as i16, y: e.y as i16 }
-                } else {
-                    TouchPad::Released
-                };
-            });
-
-            move_z_ui.update(&mut ctx.shared.stepper, zsensor);
-            lvgl.run_tasks();
-        }
-    }
-}
-
-
-    /*
-    fn draw_touch_event(display: &mut Display, touch_event: Option<&TouchEvent>) {
-        use embedded_graphics::{prelude::*, primitives::{Circle, PrimitiveStyle}, pixelcolor::Rgb565};
-
-        if let Some(touch_event) = touch_event {
-            Circle::new(Point::new(touch_event.x as i32, touch_event.y as i32), 3)
-                .into_styled(PrimitiveStyle::with_fill(Rgb565::GREEN))
-                .draw(display).unwrap();
-        }
-    }
-*/

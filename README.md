@@ -164,6 +164,12 @@ It's for the lvgl dependency so it locates the `lv_conf.h` file.
 export DEP_LV_CONFIG_PATH=`pwd`
 ```
 
+Also you must init submodules:
+
+```
+git submodule update --init --recursive
+```
+
 ### Build
 
 ```

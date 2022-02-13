@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use embassy::channel::signal::Signal;
 use lvgl::{
     style::State,
     core::{Display, Screen},
@@ -9,20 +10,11 @@ use lvgl::{
 use alloc::format;
 
 use lvgl::cstr_core::CStr;
-use crate::{drivers::zaxis::{
+use crate::drivers::zaxis::{
     prelude::*,
-    stepper::Stepper,
-    sensor::Sensor,
-}, consts::stepper::DEFAULT_MAX_SPEED};
-
-#[derive(Debug)]
-enum UserAction {
-    MoveUp,
-    MoveDown,
-    Calibrate,
-    StopRequested,
-    SetSpeed(f32),
-}
+    self,
+};
+use crate::consts::zaxis::motion_control::*;
 
 pub struct MoveZ {
     btn_move_up: Btn<Self>,
@@ -32,15 +24,14 @@ pub struct MoveZ {
     position_label: Label<Self>,
     btn_calibrate: Btn<Self>,
 
-    user_action: Option<UserAction>,
+    user_action: &'static Signal<UserAction>,
 }
 
 impl MoveZ {
-    pub fn new<D>(display: &Display<D>) -> Screen::<Self> {
+    pub fn new<D>(display: &Display<D>, user_action: &'static Signal<UserAction>) -> Screen::<Self> {
         use lvgl::widgets::*;
         use lvgl::style::*;
         use lvgl::core::*;
-        use lvgl::prelude::*;
 
         let spacing = 12;
 
@@ -54,7 +45,14 @@ impl MoveZ {
             .add_flag(Flag::CHECKABLE)
             .on_event(Event::Clicked, |context| {
                 let checked = context.btn_move_up.has_state(State::CHECKED);
-                context.user_action = Some(
+
+                context.btn_move_down.add_state(State::DISABLED);
+                context.btn_calibrate.add_state(State::DISABLED);
+                if !checked {
+                    context.btn_move_up.add_state(State::DISABLED);
+                }
+
+                context.user_action.signal(
                     if checked { UserAction::MoveUp }
                     else { UserAction::StopRequested }
                 );
@@ -69,7 +67,14 @@ impl MoveZ {
             .add_flag(Flag::CHECKABLE)
             .on_event(Event::Clicked, |context| {
                 let checked = context.btn_move_down.has_state(State::CHECKED);
-                context.user_action = Some(
+
+                context.btn_move_up.add_state(State::DISABLED);
+                context.btn_calibrate.add_state(State::DISABLED);
+                if !checked {
+                    context.btn_move_down.add_state(State::DISABLED);
+                }
+
+                context.user_action.signal(
                     if checked { UserAction::MoveDown }
                     else { UserAction::StopRequested }
                 );
@@ -85,9 +90,9 @@ impl MoveZ {
 
                 let value = (value as f32)/10000.0;
                 let value = value*value*value;
-                let value = value * DEFAULT_MAX_SPEED;
+                let value = value * MAX_SPEED;
 
-                context.user_action = Some(UserAction::SetSpeed(value));
+                context.user_action.signal(UserAction::SetSpeed(value));
             });
         });
 
@@ -107,7 +112,14 @@ impl MoveZ {
             .add_flag(Flag::CHECKABLE)
             .on_event(Event::Clicked, |context| {
                 let checked = context.btn_calibrate.has_state(State::CHECKED);
-                context.user_action = Some(
+
+                context.btn_move_up.add_state(State::DISABLED);
+                context.btn_move_down.add_state(State::DISABLED);
+                if !checked {
+                    context.btn_calibrate.add_state(State::DISABLED);
+                }
+
+                context.user_action.signal(
                     if checked { UserAction::Calibrate }
                     else { UserAction::StopRequested }
                 );
@@ -115,19 +127,12 @@ impl MoveZ {
         });
 
         Label::new(&mut screen).apply(|obj| { obj
-            .set_text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.2\0").unwrap())
+            .set_text(&CStr::from_bytes_with_nul(b"Turbo Resin v0.1.3\0").unwrap())
             .align_to(&screen, Align::BottomRight, -5, -5);
         });
 
-        let context = Self {
-            btn_move_up,
-            btn_move_down,
-            speed_slider,
-            speed_label,
-            position_label,
-            btn_calibrate,
-
-            user_action: None,
+        let context = Self { btn_move_up, btn_move_down, speed_slider,
+            speed_label, position_label, btn_calibrate, user_action
         };
 
         screen.apply(|s| {
@@ -135,48 +140,47 @@ impl MoveZ {
         })
     }
 
-    pub fn update(&mut self,
-        stepper: &mut impl rtic::Mutex<T=Stepper>,
-        zsensor: &mut Sensor,
-    ) {
-        match self.user_action.take() {
-            Some(UserAction::MoveUp) => {
-                stepper.lock(|s| s.set_target_relative(40.0.mm()));
-                self.btn_move_down.add_state(State::DISABLED);
-            },
-            Some(UserAction::MoveDown) => {
-                stepper.lock(|s| s.set_target_relative((-40.0).mm()));
-                self.btn_move_up.add_state(State::DISABLED);
-            }
-            Some(UserAction::StopRequested) => {
-                self.btn_move_down.add_state(State::DISABLED);
-                self.btn_move_up.add_state(State::DISABLED);
-                stepper.lock(|s| s.controlled_stop());
-            }
-            Some(UserAction::SetSpeed(v)) => stepper.lock(|s| s.set_max_speed(v.mm())),
-            Some(UserAction::Calibrate) => {
-                zsensor.calibrate(stepper);
-                self.btn_calibrate.clear_state(State::CHECKED | State::DISABLED);
-            }
-            None => {}
-        }
-
-        let (is_idle, current_position, max_speed) = stepper.lock(|s| {
-            (s.is_idle(), s.current_position, s.get_max_speed())
-        });
-
-        if is_idle {
+    pub fn update_ui(&mut self, zaxis: &zaxis::MotionControlAsync) {
+        if zaxis.is_idle() {
             self.btn_move_up.clear_state(State::CHECKED | State::DISABLED);
             self.btn_move_down.clear_state(State::CHECKED | State::DISABLED);
+            self.btn_calibrate.clear_state(State::CHECKED | State::DISABLED);
         }
 
         // set_text() makes a copy of the string internally.
         self.position_label.set_text(&CStr::from_bytes_with_nul(
-            format!("Position: {:.2} mm\0", current_position.as_mm()).as_bytes()
+            format!("Position: {:.2} mm\0", zaxis.get_current_position().as_mm()).as_bytes()
         ).unwrap());
 
         self.speed_label.set_text(&CStr::from_bytes_with_nul(
-            format!("Max speed: {:.2} mm/s\0", max_speed.as_mm()).as_bytes()
+            format!("Max speed: {:.2} mm/s\0", zaxis.get_max_speed().as_mm()).as_bytes()
         ).unwrap());
     }
+}
+
+#[derive(Debug)]
+pub enum UserAction {
+    MoveUp,
+    MoveDown,
+    Calibrate,
+    StopRequested,
+    SetSpeed(f32),
+}
+
+impl UserAction {
+    pub async fn do_user_action(&self, mc: &mut zaxis::MotionControlAsync) {
+        use UserAction::*;
+        match self {
+            MoveUp => mc.set_target_relative(40.0.mm()),
+            MoveDown => mc.set_target_relative((-40.0).mm()),
+            StopRequested => mc.stop(),
+            SetSpeed(v) => mc.set_max_speed(v.mm()),
+            Calibrate => {
+                zaxis::calibrate_origin(mc, None).await;
+                mc.set_max_speed(MAX_SPEED.mm());
+                mc.set_target(0.0.mm());
+                mc.wait(zaxis::Event::Idle).await;
+            }
+        }
+   }
 }

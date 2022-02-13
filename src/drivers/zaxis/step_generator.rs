@@ -3,13 +3,24 @@
 // This is an implementation of:
 // An algorithm of linear speed control of a stepper motor in real time
 // by Mihaylo Y. Stoychitch
-// I prefer it to https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/
+// See http://annals.fih.upt.ro/pdf-full/2013/ANNALS-2013-3-06.pdf
+// I prefer it to compared to https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/
 
-use crate::consts::stepper::*;
+use crate::consts::zaxis::{
+    hardware::*,
+    stepper::*,
+};
 
 const TIMER_FREQ: f32 = STEP_TIMER_FREQ as f32;
 const MAX_STEP_MULTIPLIER: u32 = DRIVER_MICROSTEPS;
+// MIN_DELAY_VALUE is most of the time respected. It can be that for a single
+// step, the delay is going to be smaller, but immediately after, the step
+// multiplier will be corrected.
+// We could do a better implementation.
 const MIN_DELAY_VALUE: f32 = STEP_TIMER_MIN_DELAY_VALUE;
+
+// The DRV8424 doesn't allow 1/64 microstepping because of the pin configuration
+const FORBIDDEN_MULTIPLIER: u32 = 4;
 
 pub struct StepGenerator {
     ra: f32, // acceleration constant like in the paper
@@ -91,10 +102,13 @@ impl StepGenerator {
         let ci = self.ci;
         let effective_ci = ci*(m as f32);
 
+        let increase_rate = if m*2 == FORBIDDEN_MULTIPLIER { 4 } else { 2 };
+        let decrease_rate = if m/2 == FORBIDDEN_MULTIPLIER { 4 } else { 2 };
+
         if self.n == 0 {
             self.step_multiplier = 1;
         } else if self.remaining_steps < self.step_multiplier {
-            self.step_multiplier /= 2;
+            self.step_multiplier /= decrease_rate;
         } else if effective_ci < MIN_DELAY_VALUE && m != MAX_STEP_MULTIPLIER {
             // If the delay value becomes too small, we won't be able to keep up
             // sending pulses fast enough. We must rise the step multiplier.
@@ -105,11 +119,15 @@ impl StepGenerator {
             // Also we assume that the caller does a single step before invoking
             // the first next() call, hence the +1. It doesn't really change much,
             // a 1/256 microstep is so small.
-            if (self.n+1) % MAX_STEP_MULTIPLIER == 0 {
-               self.step_multiplier *= 2;
+            let next_multiplier = m*increase_rate;
+            if (self.n+1) % next_multiplier == 0 {
+               self.step_multiplier = next_multiplier;
             }
-        } else if m != 1 && effective_ci > MIN_DELAY_VALUE*3.0 {
-               self.step_multiplier /= 2;
+        } else if m != 1 && effective_ci > MIN_DELAY_VALUE*(decrease_rate as f32) + 0.01 {
+            // We add 0.01 to the condition to avoid flip flopping between two
+            // multipliers because of potential rounding errors. This condition
+            // hasn't been verified, I'm just being paranoid.
+            self.step_multiplier /= decrease_rate;
         }
     }
 }
@@ -133,6 +151,7 @@ impl Iterator for StepGenerator {
         let m = self.step_multiplier;
 
         let next_ci = if self.n == 0 {
+            // See comment above for an explaination of this delay.
             cortex_m::asm::delay(30);
             // self.step_multiplier is always 1 when starting, so this is correct.
             self.c0
@@ -141,12 +160,16 @@ impl Iterator for StepGenerator {
             // inline to use as little cycles as possible.
             #[inline(always)]
             fn apply_acceleration(ci: f32, rate: f32) -> f32 {
-                ci / (1.0 + rate*ci*ci)
+                // For some reason, the formula of the paper isn't that good.
+                // For example, when decelerating, we could find a way to divide
+                // by 0. That's not good. This is a workaround, but it would be
+                // nice to have a correct formula.
+                ci / (1.0 + rate*ci*ci).clamp(0.01, 100.0)
             }
 
             // The if/elses make it slighly more complicated than what the paper
-            // suggests we assume acceleration/deceleration/max_speed/remaining_steps
-            // to be changing between two steps.
+            // suggests. Here we assume that acceleration, deceleration,
+            // max_speed, remaining_steps to be changing between two steps.
 
             let ci = self.ci;
             let m = m as f32;
@@ -158,11 +181,12 @@ impl Iterator for StepGenerator {
                 // We are cruising.
                 ci
             } else if self.target_c < ci {
-                // We are going too slow. Accelerate, but don't go over self.target_c.
+                // We are going too slow. Accelerate, so decrease ci.
+                // But don't go lower than self.target_c.
                 max(apply_acceleration(ci, m*self.ra), self.target_c)
             } else {
                 // We are going too fast. The max_speed may have been adjusted.
-                // Deccelerate, but don't go under self.target_c.
+                // Deccelerate, so increase ci, but don't go above self.target_c.
                 min(apply_acceleration(ci, m*self.rd), self.target_c)
             }
         };
@@ -191,10 +215,16 @@ impl Iterator for StepGenerator {
         self.n += m;
         self.ci = next_ci;
 
-        // FIXME next_ci*m may be under MIN_DELAY_VALUE, just for a single iteration.
-        // Next round, we'll have it fixed. But that's not great.
+        let effective_ci = next_ci * (m as f32);
 
-        Some((next_ci*(m as f32), m))
+        // FIXME effective_ci may be smaller than MIN_DELAY_VALUE, just for one
+        // or two iterations. The delay will be in the right range, as the
+        // multiplier gets fixed. It's not great.
+        // There's not much harm done though.
+        // Having said that, there will be harm if effective_ci gets rounded to 0.
+        assert!(effective_ci > 1.0);
+
+        Some((effective_ci, m))
     }
 }
 

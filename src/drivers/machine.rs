@@ -1,45 +1,39 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    prelude::*,
-    pac,
-    timer::Timer,
-    delay::Delay,
-};
+
+use stm32f1xx_hal as _;
+use stm32f1xx_hal::timer::Timer;
 
 use crate::drivers::{
     ext_flash::ExtFlash,
     display::Display,
     touch_screen::TouchScreen,
-    zaxis::{
-        stepper::Stepper,
-        sensor::Sensor,
-        drv8424::Drv8424,
-    },
+    zaxis,
     lcd::Lcd,
     clock,
+    touch_screen::*,
 };
-
-use crate::consts::system::*;
-
-
-pub type Systick = systick_monotonic::Systick<{ SYSTICK_HZ }>;
-pub mod prelude {
-    pub use systick_monotonic::ExtU64;
-}
 
 pub struct Machine {
     pub ext_flash: ExtFlash,
     pub display: Display,
     pub touch_screen: TouchScreen,
-    pub stepper: Stepper,
-    pub systick: Systick,
+    pub stepper: zaxis::MotionControl,
     pub lcd: Lcd,
-    pub zsensor: Sensor,
+    pub z_bottom_sensor: zaxis::BottomSensor,
 }
 
+use embassy_stm32::Peripherals;
+use stm32f1xx_hal::prelude::*;
+
 impl Machine {
-    pub fn new(cp: cortex_m::Peripherals, dp: pac::Peripherals) -> Self {
+    pub fn new(cp: cortex_m::Peripherals, p: Peripherals) -> Self {
+        // Okay, so what we are doing is really sad. Embassy doesn't have well
+        // enough support for the things we need to do. For example running a
+        // PWM on PA3 is not implemented.
+        // So we are going to use both HALs. Embassy's and the usual one.
+
+        let dp = unsafe { stm32f1xx_hal::pac::Peripherals::steal() };
         let mut gpioa = dp.GPIOA.split();
         let mut gpiob = dp.GPIOB.split();
         let mut gpioc = dp.GPIOC.split();
@@ -47,7 +41,7 @@ impl Machine {
         let mut gpioe = dp.GPIOE.split();
 
         let mut afio = dp.AFIO.constrain();
-        let exti = dp.EXTI;
+        let clocks = super::clock::get_120mhz_clocks_config();
 
         // Note, we can't use separate functions, because we are consuming (as
         // in taking ownership of) the device peripherals struct, and so we
@@ -59,9 +53,7 @@ impl Machine {
         //--------------------------
 
         // Can't use the HAL. The GD32 is too different.
-        let clocks = clock::setup_clock_120m_hxtal(dp.RCC);
-        let mut delay = Delay::new(cp.SYST, clocks);
-
+        //let clocks = clock::setup_clock_120m_hxtal();
         clock::CycleCounter::new(cp.DWT).into_global();
 
         //--------------------------
@@ -88,15 +80,13 @@ impl Machine {
             dp.FSMC,
             &mut gpioa.crh, &mut gpioc.crl, &mut gpiod.crl, &mut gpiod.crh, &mut gpioe.crl, &mut gpioe.crh,
         );
-        display.init(&mut delay);
+        display.init();
 
         //--------------------------
         //  Touch screen
         //--------------------------
-
         let touch_screen = TouchScreen::new(
-            gpioc.pc7, gpioc.pc8, gpioc.pc9, gpioa.pa8, gpioa.pa9,
-            &mut gpioa.crh, &mut gpioc.crl, &mut gpioc.crh, &mut afio, &exti,
+            ADS7846::new(p.PC7, p.PC8, p.PC9, p.PA8, p.PA9, p.EXTI9)
         );
 
         //--------------------------
@@ -113,15 +103,15 @@ impl Machine {
         //  Stepper motor (Z-axis)
         //--------------------------
 
-        let (pa15, pb3, pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
+        let (_pa15, pb3, _pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
 
-        let zsensor = Sensor::new(
+        let z_bottom_sensor = zaxis::BottomSensor::new(
             pb3,
             // pb4,
             &mut gpiob.crl,
         );
 
-        let drv8424 = Drv8424::new(
+        let drv8424 = zaxis::Drv8424::new(
             gpioe.pe4, gpioe.pe5, gpioe.pe6,
             gpioc.pc3, gpioc.pc0,
             gpioc.pc1, gpioc.pc2,
@@ -130,15 +120,8 @@ impl Machine {
             &mut gpioa.crl, gpioc.crl, &mut gpioe.crl, &mut afio.mapr,
         );
 
-        let stepper = Stepper::new(drv8424, Timer::new(dp.TIM7, &clocks));
+        let stepper = zaxis::MotionControl::new(drv8424, Timer::new(dp.TIM7, &clocks));
 
-        //--------------------------
-        // Systicks for RTIC
-        //--------------------------
-
-        let syst = delay.free();
-        let systick = Systick::new(syst, clocks.sysclk().0);
-
-        Self { ext_flash, display, touch_screen, stepper, lcd, zsensor, systick }
+        Self { ext_flash, display, touch_screen, stepper, lcd, z_bottom_sensor }
     }
 }

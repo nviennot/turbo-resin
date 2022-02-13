@@ -1,6 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use nb::block;
 use stm32f1xx_hal::{
     pac::SPI1,
     gpio::*,
@@ -40,7 +39,7 @@ impl Lcd {
         gpiod_crh: &mut Cr<CRH, 'D'>,
         mapr: &mut MAPR,
     ) -> Self {
-        let reset = reset.into_push_pull_output_with_state(gpiod_crh, PinState::Low);
+        let _reset = reset.into_push_pull_output_with_state(gpiod_crh, PinState::Low);
         let cs = cs.into_push_pull_output_with_state(gpioa_crl, PinState::High);
 
         let spi = {
@@ -64,6 +63,7 @@ impl Lcd {
     const COLS: u16 = 3840;
     const ROWS: u16 = 2400;
 
+    /*
     const DEFAULT_COLOR_MAP: [u16; 16] = [
         0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
@@ -88,6 +88,7 @@ impl Lcd {
 
         self.draw_waves(16);
     }
+    */
 
     pub fn draw_all_black(&mut self) {
         self.draw(|row, col| { 0 })

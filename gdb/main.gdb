@@ -15,7 +15,7 @@ set print asm-demangle on
 #break rust_begin_unwind
 
 # Loads the plugin to read registers in readable format
-#source ../repos/PyCortexMDebug/scripts/gdb.py
+#source ./repos/PyCortexMDebug/scripts/gdb.py
 #svd_load ./stuff/gd32f307.svd
 
 

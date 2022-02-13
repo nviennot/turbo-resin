@@ -1,0 +1,3 @@
+[submodule "embassy"]
+	path = embassy
+	url = https://github.com/nviennot/embassy.git

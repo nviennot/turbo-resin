@@ -4,18 +4,17 @@ use stm32f1xx_hal::{
     prelude::*,
     gpio::*,
     gpio::gpioa::*,
-    gpio::gpiob::*,
     gpio::gpioc::*,
     gpio::gpioe::*,
-    timer::{Timer, Tim2NoRemap, Event, CountDownTimer},
+    timer::{Timer, Tim2NoRemap},
     afio::MAPR,
-    pac::{TIM2, TIM7},
-    pwm::Channel, rcc::Clocks,
+    pac::TIM2,
+    pwm::Channel,
 };
 
 use embedded_hal::digital::v2::OutputPin;
 
-use crate::{consts::stepper::*, runtime::debug, drivers::clock::delay_ns};
+use crate::consts::zaxis::hardware::*;
 
 #[derive(PartialEq, Clone, Copy)]
 pub enum Direction {
@@ -83,7 +82,7 @@ impl Drv8424 {
         // vref is used to set the amount of current the motor receives.
         let vref = vref.into_alternate_push_pull(gpioa_crl);
         let mut pwm = pwm_timer.pwm::<Tim2NoRemap, _, _, _>(vref, mapr, 100.khz());
-        pwm.set_duty(Channel::C4, (((pwm.get_max_duty() as u32) * POWER_PERCENT) / 100) as u16);
+        pwm.set_duty(Channel::C4, (((pwm.get_max_duty() as u32) * MOTOR_CURRENT_PERCENT) / 100) as u16);
         pwm.enable(Channel::C4);
 
         let step_multiplier = 0;
@@ -136,7 +135,7 @@ impl Drv8424 {
         }
     }
 
-    pub fn current_direction(&self) -> Direction {
+    pub fn get_direction(&self) -> Direction {
         match self.dir.is_set_high() {
             true  => Direction::Up,
             false => Direction::Down,

@@ -9,23 +9,26 @@ version = "0.1.0"
 embedded-hal = "0.2.3"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
-cortex-m-rtic = "1.0"
-systick-monotonic = "1.0"
 rtt-target = { version = "0.3", features = ["cortex-m"]}
-stm32f1xx-hal = { git = "https://github.com/nviennot/stm32f1xx-hal.git", features = ["rt", "stm32f107", "medium"]}
+stm32f1 = {version = "0.14", default-features = false}
+stm32f1xx-hal = { git = "https://github.com/nviennot/stm32f1xx-hal.git", default-features = false, features = ["stm32f107", "medium"]}
 gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", features = ["gd32f307"] } # This one is for the clock register definitions.
-spi-memory = "0.2" # For the external flash access. Maybe not useful at this point.
+spi-memory = "0.2" # For the external flash access. Will be useful when we do firmware updates
 embedded-graphics = "0.7"
 embedded-graphics-core = "0.3"
 nb = "1"
 lvgl = { git = "https://github.com/nviennot/lvgl-rs.git", features =["logger", "lvgl_alloc"] }
+futures = { version = "0.3", default-features = false }
+
+embassy = { path = "embassy/embassy" }
+embassy-stm32 = { path = "embassy/embassy-stm32", features= ["nightly", "stm32f107rc", "unstable-pac", "time-driver-tim3", "exti"] }
 
 #arrayvec = {version = "0.7", default-features = false }
 #cty = "0.2"
 #embedded-time = "0.12"
 #fugit = "0.3"
 
-#[patch."https://github.com/stm32-rs/stm32f1xx-hal.git"]
+#[patch."https://github.com/nviennot/stm32f1xx-hal.git"]
 #stm32f1xx-hal = { path = "repos/stm32f1xx-hal" }
 
 # uncomment this for lvgl dev

@@ -1,44 +1,27 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    gpio::*,
-    gpio::gpioa::*,
-    gpio::gpioc::*,
-    pac::EXTI,
-    afio,
-};
-
 use crate::drivers::clock::delay_ns;
 use core::convert::From;
-
 use crate::consts::touch_screen::*;
+use embassy_stm32::exti::ExtiInput;
+use embassy_stm32::peripherals as p;
+use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
+use embassy::time::{Duration, Timer};
+
 
 // The scale doesn't really matter. It's just to avoid using floats as we are dealing with small values.
 const PRESSURE_SCALE: u16 = 32;
 const PRESSURE_THRESHOLD_VALUE: u16 = (PRESSURE_SCALE as f32 * PRESSURE_THRESHOLD) as u16;
 
-
 // There's an application note that can be useful to follow for getting good
 // results https://www.ti.com/lit/an/sbaa036/sbaa036.pdf
 
-
-pub struct TouchScreen {
-    device: ADS7846,
-    num_samples: u8,
-    last_samples: [TouchEvent; NUM_STABLE_SAMPLES as usize],
-}
-
-pub enum TouchScreenResult {
-    DelayMs(u8),
-    Done(Option<TouchEvent>),
-}
-
-struct ADS7846 {
-    cs: PC7<Output<PushPull>>,
-    sck: PC8<Output<PushPull>>,
-    miso: PC9<Input<Floating>>,
-    mosi: PA8<Output<PushPull>>,
-    touch_detected: PA9<Input<Floating>>,
+pub struct ADS7846 {
+    cs: Output<'static, p::PC7>,
+    sck: Output<'static, p::PC8>,
+    miso: Input<'static, p::PC9>,
+    mosi: Output<'static, p::PA8>,
+    touch_detected: ExtiInput<'static, p::PA9>,
 }
 
 /// Raw data coming out of the device
@@ -58,72 +41,74 @@ pub struct TouchEvent {
     pub z: u16,
 }
 
+pub struct TouchScreen {
+    device: ADS7846,
+    had_touch_event: bool,
+}
+
 impl TouchScreen {
-    pub fn new(
-        cs: PC7<Input<Floating>>,
-        sck: PC8<Input<Floating>>,
-        miso: PC9<Input<Floating>>,
-        mosi: PA8<Input<Floating>>,
-        mut touch_detected: PA9<Input<Floating>>,
-        gpioa_crh: &mut Cr<CRH, 'A'>,
-        gpioc_crl: &mut Cr<CRL, 'C'>,
-        gpioc_crh: &mut Cr<CRH, 'C'>,
-        afio: &mut afio::Parts,
-        exti: &EXTI,
-    ) -> Self {
-        let cs = cs.into_push_pull_output_with_state(gpioc_crl, PinState::High);
-        let sck = sck.into_push_pull_output(gpioc_crh);
-        let miso = miso.into_floating_input(gpioc_crh);
-        let mosi = mosi.into_push_pull_output(gpioa_crh);
-
-        touch_detected.make_interrupt_source(afio);
-        touch_detected.trigger_on_edge(exti, Edge::Falling);
-        touch_detected.enable_interrupt(exti);
-
-        let device = ADS7846 { cs, sck, miso, mosi, touch_detected };
-
-        let num_samples = 0;
-        let last_samples = Default::default();
-
-        Self { device, num_samples, last_samples }
+    pub fn new(device: ADS7846) -> Self {
+        Self { device, had_touch_event: false }
     }
 
-    pub fn on_pen_down_interrupt(&mut self) -> TouchScreenResult {
-        self.device.touch_detected.clear_interrupt_pending_bit();
-        if self.device.is_touch_detected() {
-            return TouchScreenResult::DelayMs(DEBOUNCE_INT_DELAY_MS);
-        } else {
-            return TouchScreenResult::Done(None);
-        }
-    }
+    pub async fn get_next_touch_event(&mut self) -> Option<TouchEvent> {
+        loop {
+            {
+                // We do the had_touch_event check after we register the wait
+                // for touch future. This is so we avoid a race when checking
+                // for the touch detection to return the None event, and
+                // blocking in wait_for_touch_detected.
+                let touch_detected_fut = self.device.wait_for_touch_detected();
+                futures::pin_mut!(touch_detected_fut);
+                if futures::poll!(&mut touch_detected_fut).is_pending() {
+                    if self.had_touch_event {
+                        self.had_touch_event = false;
+                        return None
+                    }
+                    touch_detected_fut.await;
+                }
+            }
 
-    /// Returns a touchevent, plus an option amount of milliseconds to wait.
-    pub fn on_delay_expired(&mut self) -> TouchScreenResult {
-        // The touch line should always be active during the entirety of the sampling.
-        if !self.device.is_touch_detected() {
-            self.num_samples = 0;
-            return TouchScreenResult::Done(None);
-        }
-
-        let sample = self.device.read_packet().into();
-        self.last_samples[(self.num_samples % NUM_STABLE_SAMPLES) as usize] = sample;
-        // If we wrap, we will be in the same state as if we just received a pen
-        // interrupt. It's fine as it's unusual.
-        self.num_samples = self.num_samples.wrapping_add(1);
-
-        if self.num_samples >= NUM_STABLE_SAMPLES {
-            if let Some(result) = self.compile_samples() {
-                self.num_samples = 0;
-                return TouchScreenResult::Done(Some(result));
+            if let Some(touch_event) = self.get_stable_sample().await {
+                self.had_touch_event = true;
+                return Some(touch_event);
             }
         }
-        return TouchScreenResult::DelayMs(SAMPLE_DELAY_MS);
+    }
+
+    async fn get_stable_sample(&mut self) -> Option<TouchEvent> {
+        let mut num_samples: u8 = 0;
+        let mut last_samples: [TouchEvent; NUM_STABLE_SAMPLES as usize] = Default::default();
+
+        loop {
+            // The touch line should be active during the entirety of the sampling.
+            if !self.device.is_touch_detected() {
+                return None;
+            }
+
+            let sample = self.device.read_packet().into();
+            last_samples[(num_samples % NUM_STABLE_SAMPLES) as usize] = sample;
+
+            // If we wrap, we will be in the same state as if we just received a pen
+            // interrupt. It's fine as it's unusual, and we'd rather keep the
+            // num_samples as a u8. We don't want to do saturating_add() because
+            // that would no longer distribute values in the last_samples array.
+            num_samples = num_samples.wrapping_add(1);
+
+            if num_samples >= NUM_STABLE_SAMPLES {
+                if let Some(result) = Self::compile_stable_sample(&last_samples) {
+                    return Some(result)
+                }
+            }
+
+            Timer::after(Duration::from_millis(SAMPLE_DELAY_MS)).await;
+        }
     }
 
     /// Returns a sample when the touch events are consistent
-    fn compile_samples(&self) -> Option<TouchEvent> {
+    fn compile_stable_sample(last_samples: &[TouchEvent]) -> Option<TouchEvent> {
         let mut avg_sample: TouchEvent = Default::default();
-        for sample in &self.last_samples {
+        for sample in last_samples {
             // If the touch pressure is seen to be bad just once, we discard the
             // whole thing.
             if sample.z > PRESSURE_THRESHOLD_VALUE {
@@ -135,11 +120,11 @@ impl TouchScreen {
             avg_sample.z += sample.z;
         }
 
-        avg_sample.x /= self.last_samples.len() as u16;
-        avg_sample.y /= self.last_samples.len() as u16;
-        avg_sample.z /= self.last_samples.len() as u16;
+        avg_sample.x /= last_samples.len() as u16;
+        avg_sample.y /= last_samples.len() as u16;
+        avg_sample.z /= last_samples.len() as u16;
 
-        for sample in &self.last_samples {
+        for sample in last_samples {
             if avg_sample.x.abs_diff(sample.x) > STABLE_X_Y_VALUE_TOLERANCE ||
                avg_sample.y.abs_diff(sample.y) > STABLE_X_Y_VALUE_TOLERANCE {
                    return None;
@@ -171,10 +156,40 @@ impl From<Packet> for TouchEvent {
     }
 }
 
+pub fn into_lvgl_event(e: &Option<TouchEvent>) -> lvgl::core::TouchPad {
+    use lvgl::core::TouchPad;
+    if let Some(e) = e.as_ref() {
+        TouchPad::Pressed { x: e.x as i16, y: e.y as i16 }
+    } else {
+        TouchPad::Released
+    }
+}
+
 
 impl ADS7846 {
+    pub fn new(
+        cs: p::PC7,
+        sck: p::PC8,
+        miso: p::PC9,
+        mosi: p::PA8,
+        touch_detected: p::PA9,
+        exti9: p::EXTI9,
+    ) -> Self {
+        let cs = Output::new(cs, Level::High, Speed::Medium);
+        let sck = Output::new(sck, Level::Low, Speed::Medium);
+        let miso = Input::new(miso, Pull::None);
+        let mosi = Output::new(mosi, Level::Low, Speed::Medium);
+        let touch_detected = ExtiInput::new(Input::new(touch_detected, Pull::None), exti9);
+
+        Self { cs, sck, miso, mosi, touch_detected }
+    }
+
     fn is_touch_detected(&self) -> bool {
         self.touch_detected.is_low()
+    }
+
+    async fn wait_for_touch_detected(&mut self) {
+        self.touch_detected.wait_for_low().await
     }
 
     // Returns (x,y) coordinates if a touch is detected

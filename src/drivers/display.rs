@@ -1,15 +1,11 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use stm32f1xx_hal::{
-    prelude::*,
     gpio::*,
     gpio::gpioa::*,
     gpio::gpioc::*,
     gpio::gpiod::*,
     gpio::gpioe::*,
-    //pac::Peripherals,
-    //rcc::{Clocks, APB1},
-    delay::Delay,
     pac::{self, FSMC},
 };
 
@@ -137,15 +133,15 @@ impl Display {
         unsafe { Self::TFT_DATA.write_volatile(v); }
     }
 
-    pub fn init(&mut self, delay: &mut Delay) {
+    pub fn init(&mut self) {
         // This sequence is mostly taken from the original firmware
-        delay.delay_ms(10u8);
+        delay_ms(10);
         self.reset.set_high();
-        delay.delay_ms(10u8);
+        delay_ms(10);
         self.reset.set_low();
-        delay.delay_ms(80u8);
+        delay_ms(80);
         self.reset.set_high();
-        delay.delay_ms(50u8);
+        delay_ms(50);
 
         self.cmd(0xCF, &[0x00, 0xC1, 0x30]);
         self.cmd(0xED, &[0x64, 0x03, 0x12, 0x81]);
@@ -171,15 +167,15 @@ impl Display {
 
         // Sleep Out
         self.cmd(0x11, &[]);
-        delay.delay_ms(8u8);
+        delay_ms(8);
 
         // Display ON
         self.cmd(0x29, &[]);
-        delay.delay_ms(1u8);
+        delay_ms(1);
 
         self.fill_screen(0);
 
-        delay.delay_ms(110u32);
+        delay_ms(110);
     }
 
     pub fn write_data_as_two_u8(&mut self, v: u16) {
@@ -264,6 +260,8 @@ use embedded_graphics::{
     pixelcolor::{Rgb565, raw::RawU16},
     primitives::Rectangle,
 };
+
+use super::clock::delay_ms;
 
 impl DrawTarget for Display {
     type Color = Rgb565;

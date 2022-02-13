@@ -12,7 +12,7 @@ use gd32f3::gd32f307::{
     RCU,
 };
 
-pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {
+pub fn setup_clock_120m_hxtal() -> Clocks {
     // Transcribed from the GD32F30x Firmware Library
 
     unsafe {
@@ -82,38 +82,56 @@ pub fn setup_clock_120m_hxtal(_rcc: stm32f1xx_hal::pac::RCC) -> Clocks {
             .adcpsc_1_0().bits(1) // APB2/4 clock
             .adcpsc_2().clear_bit()
         );
+    }
 
-        // The stm32 create has the Clocks struct, but all the fields are private.
-        // We are left doing this hack with transmuting memory.
-        // Not the safest thing, but good enough for now.
-        struct ClocksDup {
-            _hclk: Hertz,
-            _pclk1: Hertz,
-            _pclk2: Hertz,
-            _ppre1: u8,
-            _ppre2: u8,
-            _sysclk: Hertz,
-            _adcclk: Hertz,
-            _usbclk_valid: bool,
-        }
+    get_120mhz_clocks_config()
+}
 
-        let clocks = ClocksDup {
-            _hclk: 120.mhz().into(),
-            _pclk1: 60.mhz().into(),
-            _pclk2: 120.mhz().into(),
+pub fn get_120mhz_clocks_config() -> Clocks {
+    // The stm32 create has the Clocks struct, but all the fields are private.
+    // We are left doing this hack with transmuting memory.
+    // Not the safest thing, but good enough for now.
+    struct ClocksDup {
+        _hclk: Hertz,
+        _pclk1: Hertz,
+        _pclk2: Hertz,
+        _ppre1: u8,
+        _ppre2: u8,
+        _sysclk: Hertz,
+        _adcclk: Hertz,
+        _usbclk_valid: bool,
+    }
 
-            _ppre1: 0, // TODO Not sure what's that is used for
-            _ppre2: 0, // TODO Not sure what's that is used for
+    let clocks = ClocksDup {
+        _hclk: 120.mhz().into(),
+        _pclk1: 60.mhz().into(),
+        _pclk2: 120.mhz().into(),
 
-            _sysclk: 120.mhz().into(),
-            _adcclk: 30.mhz().into(),
+        _ppre1: 0, // TODO Not sure what's that is used for
+        _ppre2: 0, // TODO Not sure what's that is used for
 
-            _usbclk_valid: true,
-        };
+        _sysclk: 120.mhz().into(),
+        _adcclk: 30.mhz().into(),
 
-        core::mem::transmute(clocks)
+        _usbclk_valid: true,
+    };
+
+    unsafe { core::mem::transmute(clocks) }
+}
+
+pub fn embassy_stm32_clock_from(clk: &Clocks) -> embassy_stm32::rcc::Clocks {
+    use embassy_stm32::time::Hertz;
+    embassy_stm32::rcc::Clocks {
+        sys: Hertz(clk.sysclk().0),
+        apb1: Hertz(clk.pclk1().0),
+        apb2: Hertz(clk.pclk2().0),
+        apb1_tim: Hertz(clk.pclk1_tim().0),
+        apb2_tim: Hertz(clk.pclk2_tim().0),
+        ahb1: Hertz(clk.hclk().0),
+        adc: Hertz(clk.adcclk().0),
     }
 }
+
 
 // 3 clock cycles is 25ns at 120MHz
 #[inline(always)]
@@ -122,8 +140,21 @@ pub fn delay_ns(duration_ns: u32) {
     cortex_m::asm::delay(cycles);
 }
 
+#[inline(always)]
+pub fn delay_us(duration_us: u32) {
+    delay_ns(duration_us*1000)
+}
 
-static mut CYCLE_COUNTER_SINGLETON: Option<CycleCounter> = None;
+#[inline(always)]
+pub fn delay_ms(duration_ms: u32) {
+    delay_us(duration_ms*1000)
+}
+
+
+
+use embassy::util::Forever;
+
+static CYCLE_COUNTER: Forever<CycleCounter> = Forever::new();
 
 pub struct CycleCounter {
    dwt: DWT,
@@ -141,17 +172,13 @@ impl CycleCounter {
     }
 
     pub fn into_global(self) {
-        unsafe {
-            CYCLE_COUNTER_SINGLETON = Some(self);
-        }
+        CYCLE_COUNTER.put(self);
     }
 }
 
 #[inline(always)]
 pub fn read_cycles() -> u32 {
-    unsafe {
-        CYCLE_COUNTER_SINGLETON.as_ref().unwrap_unchecked().cycles()
-    }
+    unsafe { CYCLE_COUNTER.steal().cycles() }
 }
 
 
