@@ -26,7 +26,6 @@ use embassy::{
     util::Forever,
     executor::InterruptExecutor,
     interrupt::InterruptExt,
-    channel::signal::Signal,
     blocking_mutex::CriticalSectionMutex as Mutex,
 };
 use embassy_stm32::{Config, interrupt};
@@ -38,13 +37,15 @@ use drivers::{
     display::Display as RawDisplay,
     zaxis,
 };
+use util::TaskRunner;
 use util::SharedWithInterrupt;
 pub(crate) use runtime::debug;
 
 
 static LAST_TOUCH_EVENT: Mutex<RefCell<Option<TouchEvent>>> = Mutex::new(RefCell::new(None));
 static Z_AXIS: Forever<zaxis::MotionControlAsync> = Forever::new();
-static USER_ACTION: Signal<crate::ui::UserAction> = Signal::new();
+
+static TASK_RUNNER: Forever<TaskRunner<ui::Task>> = Forever::new();
 
 mod maximum_priority_tasks {
     use super::*;
@@ -81,14 +82,8 @@ mod high_priority_tasks {
     #[embassy::task]
     pub async fn main_task() {
         let z_axis = unsafe { Z_AXIS.steal() };
-        // Here is the control center, coordinating the printer hardware.
-        // We react to user input, and do something with it.
-        loop {
-            let user_action = USER_ACTION.wait().await;
-            debug!("Executing user action: {:?}", user_action);
-            user_action.do_user_action(z_axis).await;
-            debug!("Done executing user action");
-        }
+        let task_runner = unsafe { TASK_RUNNER.steal() };
+        task_runner.run_tasks(z_axis).await;
     }
 }
 
@@ -103,12 +98,16 @@ mod low_priority_tasks {
     ) -> ! {
         let mut lvgl_input_device = lvgl::core::InputDevice::<TouchPad>::new(&mut display);
 
-        let mut ui = ui::MoveZ::new(&display, &USER_ACTION);
+        let mut ui = ui::new_screen(&display, |screen| {
+            let z_axis = unsafe { Z_AXIS.steal() };
+            let task_runner = unsafe { TASK_RUNNER.steal() };
+            ui::MoveZ::new(screen, task_runner, z_axis)
+        });
+
         display.load_screen(&mut ui);
 
-        let z_axis = unsafe { Z_AXIS.steal() };
         loop {
-            ui.context().as_mut().unwrap().update_ui(z_axis);
+            ui.context().as_mut().unwrap().refresh();
 
             LAST_TOUCH_EVENT.lock(|e| {
                 *lvgl_input_device.state() = touch_screen::into_lvgl_event(&e.borrow());
@@ -157,8 +156,8 @@ fn main() -> ! {
 
     let (lvgl, display) = lvgl_init(machine.display);
 
-    let mut lcd = machine.lcd;
-    lcd.draw_waves(16);
+    //let mut lcd = machine.lcd;
+    //lcd.draw_waves(16);
 
     // Maximum priority for the motion control of the stepper motor.
     // as we need to deliver precise pulses with micro-second accuracy.

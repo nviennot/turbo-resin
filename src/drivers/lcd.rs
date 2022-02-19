@@ -63,8 +63,7 @@ impl Lcd {
     const COLS: u16 = 3840;
     const ROWS: u16 = 2400;
 
-    /*
-    const DEFAULT_COLOR_MAP: [u16; 16] = [
+    const DEFAULT_PALETTE: [u16; 16] = [
         0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
     ];
@@ -74,7 +73,7 @@ impl Lcd {
 
         self.draw_waves(8);
 
-        let mut cmap = Self::DEFAULT_COLOR_MAP;
+        let mut cmap = Self::DEFAULT_PALETTE;
         loop {
             let first = cmap[0];
             for k in 0..15 {
@@ -82,13 +81,12 @@ impl Lcd {
             }
             cmap[15] = first;
 
-            self.set_color_map(&cmap);
+            self.set_palette(&cmap);
             self.delay_150ns(300000);
         }
 
         self.draw_waves(16);
     }
-    */
 
     pub fn draw_all_black(&mut self) {
         self.draw(|row, col| { 0 })
@@ -141,13 +139,13 @@ impl Lcd {
         return version
     }
 
-    pub fn set_color_map(&mut self, map: &[u16; 16]) {
-        self.cmd(Command::SetColorMap, Some(map), None);
+    pub fn set_palette(&mut self, map: &[u16; 16]) {
+        self.cmd(Command::SetPalette, Some(map), None);
     }
 
-    pub fn get_color_map(&mut self) -> [u16; 16] {
+    pub fn get_palette(&mut self) -> [u16; 16] {
         let mut map = [0_u16; 16];
-        self.cmd(Command::GetColorMap, None, Some(&mut map));
+        self.cmd(Command::GetPalette, None, Some(&mut map));
         return map;
     }
 
@@ -186,8 +184,8 @@ enum Command {
     GetVersion = 0xF0,
     StartDrawing = 0xFB,
 
-    SetColorMap = 0xF1,
-    GetColorMap = 0xF2,
+    SetPalette = 0xF1,
+    GetPalette = 0xF2,
 
     /*
     0xF3, // sends 18 u16, essentially a range(1,16) / (num)

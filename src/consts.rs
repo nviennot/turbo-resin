@@ -43,6 +43,9 @@ pub mod zaxis {
         pub const BOTTOM_SENSOR_POSITION_MM: f32 = 2.0;
         // Phase 1 speed: We are going down from an arbitrary place to reach the
         // bottom where the bottom sensor activates.
+        // The 10mm/s gives us a 0.85mm overshoot (measured) when we pass the
+        // sensor with the deceleration at 60 mm/s^2. It's fine. We allow 2 mm.
+        // Note: The overshoot formula is MAX_SPEED**2/DECELERATION/2.
         pub const PHASE1_HOMING_SPEED_MM_PER_SEC: f32 = 10.0;
         // Phase 2 speed: We rise up above the z-axis bottom sensor at a moderate speed.
         pub const PHASE2_HOMING_SPEED_MM_PER_SEC: f32 = 2.0;

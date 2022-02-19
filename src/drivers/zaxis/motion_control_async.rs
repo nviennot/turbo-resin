@@ -65,7 +65,7 @@ impl MotionControlAsync {
         self.inner.lock(|mc| mc.set_target_relative(steps))
     }
 
-    pub fn set_target(&mut self, target: Steps) {
+    pub fn set_target(&self, target: Steps) {
         self.inner.lock(|mc| mc.set_target(target))
     }
 
@@ -73,7 +73,7 @@ impl MotionControlAsync {
         self.inner.lock(|mc| mc.stop())
     }
 
-    pub fn set_max_speed(&mut self, max_speed: Steps) {
+    pub fn set_max_speed(&self, max_speed: Steps) {
         self.inner.lock(|mc| mc.set_max_speed(max_speed))
     }
 
@@ -85,11 +85,11 @@ impl MotionControlAsync {
         self.inner.lock(|mc| mc.get_current_position())
     }
 
-    pub fn set_origin(&mut self, origin_position: Steps) {
+    pub fn set_origin(&self, origin_position: Steps) {
         self.inner.lock(|mc| mc.set_origin(origin_position))
     }
 
-    pub fn hard_stop(&mut self) {
+    pub fn hard_stop(&self) {
         self.inner.lock(|mc| mc.hard_stop())
     }
 

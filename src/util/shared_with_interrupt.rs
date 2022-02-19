@@ -2,7 +2,6 @@
 
 use core::cell::UnsafeCell;
 
-
 pub struct SharedWithInterrupt<T>(UnsafeCell<T>);
 impl<T> SharedWithInterrupt<T> {
     pub fn new(v: T) -> Self {
