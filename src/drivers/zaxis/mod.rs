@@ -14,8 +14,8 @@ mod distance;
 pub use distance::*;
 pub use distance::prelude;
 
-mod origin;
-pub use origin::*;
+mod origin_calibration;
+pub use origin_calibration::*;
 
 mod motion_control_async;
 pub use motion_control_async::*;
