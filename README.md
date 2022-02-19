@@ -3,7 +3,7 @@
 Turbo Resin: open-source firmware for resin printers
 ====================================================
 
-![Turbo Resin](stuff/turbo_resin.jpg)
+![Turbo Resin](misc/turbo_resin.jpg)
 
 Turbo Resin is an open-source firmware for SLA resin printers.
 
@@ -176,7 +176,7 @@ git submodule update --init --recursive
 » make
 cargo build --release
     Finished release [optimized + debuginfo] target(s) in 0.15s
-cargo objdump --release -- -h | ./stuff/rom_stats.py
+cargo objdump --release -- -h | ./misc/rom_stats.py
 .vector_table  DATA     0.3K (0.1%)
 .lvgl.text     TEXT   136.3K (53.3%)
 .lvgl.rodata   DATA    27.8K (10.9%)
@@ -213,7 +213,7 @@ make -j2 start_jlink start_jlink_rtt
 * Export this variable (or edit the Makefile) to select the stlink interface:
 
 ```
-export OPENOCD_INTERFACE=stuff/stlink.cfg
+export OPENOCD_INTERFACE=misc/stlink.cfg
 ```
 
 * Edit `gdb/main.gdb` and pick your JLink or OpenOCD interface:

@@ -1,14 +1,14 @@
 .PHONY: build run attach start_opencd start_jlink start_jlink_rtt restore_rom
 
-#OPENOCD_INTERFACE ?= stuff/openocd-jlink.cfg
-OPENOCD_INTERFACE ?= stuff/openocd-stlink.cfg
+#OPENOCD_INTERFACE ?= misc/openocd-jlink.cfg
+OPENOCD_INTERFACE ?= misc/openocd-stlink.cfg
 
 TARGET_ELF ?= target/thumbv7em-none-eabihf/release/app
 
 build:
 	@# We do build --release first, it shows compile error messages (objdump doesn't)
 	cargo build --release
-	cargo objdump -q --release -- -h | ./stuff/rom_stats.py
+	cargo objdump -q --release -- -h | ./misc/rom_stats.py
 
 run: build
 	cargo run --release -q
@@ -28,8 +28,8 @@ start_jlink_rtt:
 start_probe_run_rtt:
 	probe-run --chip STM32F107RC --no-flash ${TARGET_ELF}
 
-stuff/orig-firmware.elf: stuff/orig-firmware.bin
+misc/orig-firmware.elf: misc/orig-firmware.bin
 	arm-none-eabi-objcopy -I binary -O elf32-little --rename-section .data=.text --change-address 0x08000000 $< $@
 
-restore_rom: stuff/orig-firmware.elf
+restore_rom: misc/orig-firmware.elf
 	arm-none-eabi-gdb -q -x gdb/run.gdb $<
