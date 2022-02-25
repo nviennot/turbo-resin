@@ -32,14 +32,15 @@ dependencies = [
 
 [[package]]
 name = "anyhow"
-version = "1.0.53"
+version = "1.0.55"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "94a45b455c14666b85fc40a019e8ab9eb75e3a124e05494f5397122bc9eb06e0"
+checksum = "159bb86af3a200e19a068f4224eae4c8bb2d0fa054c7e5d1cacd5cef95e684cd"
 
 [[package]]
 name = "app"
 version = "0.1.0"
 dependencies = [
+ "bitflags",
  "cortex-m",
  "cortex-m-rt",
  "embassy",
@@ -49,11 +50,11 @@ dependencies = [
  "embedded-hal 0.2.7",
  "futures",
  "gd32f3",
+ "heapless",
  "lvgl",
  "nb 1.0.0",
  "rtt-target",
  "spi-memory",
- "stm32f1",
  "stm32f1xx-hal",
 ]
 
@@ -206,7 +207,7 @@ source = "git+https://github.com/embassy-rs/chiptool?rev=31c3c09197d63d29eddbf4c
 dependencies = [
  "anyhow",
  "cast 0.2.7",
- "clap 3.1.0",
+ "clap 3.1.1",
  "env_logger",
  "inflections",
  "log",
@@ -247,9 +248,9 @@ dependencies = [
 
 [[package]]
 name = "clap"
-version = "3.1.0"
+version = "3.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "e5f1fea81f183005ced9e59cdb01737ef2423956dac5a6d731b06b2ecfaa3467"
+checksum = "6d76c22c9b9b215eeb8d016ad3a90417bd13cb24cf8142756e6472445876cab7"
 dependencies = [
  "atty",
  "bitflags",
@@ -760,9 +761,9 @@ checksum = "830d08ce1d1d941e6b30645f1a0eb5643013d835ce3779a5fc208261dbe10f55"
 
 [[package]]
 name = "libc"
-version = "0.2.118"
+version = "0.2.119"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "06e509672465a0504304aa87f9f176f2b2b716ed8fb105ebe5c02dc6dce96a94"
+checksum = "1bf2e165bb3457c8e098ea76f3e3bc9db55f87aa90d52d0e6be741470916aaa4"
 
 [[package]]
 name = "libloading"
@@ -801,7 +802,7 @@ dependencies = [
 [[package]]
 name = "lvgl"
 version = "0.5.2"
-source = "git+https://github.com/nviennot/lvgl-rs.git#bf6ee921824165ea9593174ef985d8668276da91"
+source = "git+https://github.com/nviennot/lvgl-rs.git#d1caf070d8df5b1841de0f0edb71758601522c8d"
 dependencies = [
  "bitflags",
  "cstr_core",
@@ -816,7 +817,7 @@ dependencies = [
 [[package]]
 name = "lvgl-codegen"
 version = "0.5.2"
-source = "git+https://github.com/nviennot/lvgl-rs.git#bf6ee921824165ea9593174ef985d8668276da91"
+source = "git+https://github.com/nviennot/lvgl-rs.git#d1caf070d8df5b1841de0f0edb71758601522c8d"
 dependencies = [
  "Inflector",
  "lazy_static",
@@ -829,7 +830,7 @@ dependencies = [
 [[package]]
 name = "lvgl-sys"
 version = "0.5.2"
-source = "git+https://github.com/nviennot/lvgl-rs.git#bf6ee921824165ea9593174ef985d8668276da91"
+source = "git+https://github.com/nviennot/lvgl-rs.git#d1caf070d8df5b1841de0f0edb71758601522c8d"
 dependencies = [
  "bindgen",
  "cc",
@@ -1110,7 +1111,7 @@ version = "0.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "bfa0f585226d2e68097d4f95d113b15b83a82e819ab25717ec0590d9584ef366"
 dependencies = [
- "semver 1.0.5",
+ "semver 1.0.6",
 ]
 
 [[package]]
@@ -1142,9 +1143,9 @@ dependencies = [
 
 [[package]]
 name = "semver"
-version = "1.0.5"
+version = "1.0.6"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0486718e92ec9a68fbed73bb5ef687d71103b142595b406835649bebd33f72c7"
+checksum = "a4a3381e03edd24287172047536f20cabde766e2cd3e65e6b00fb3af51c4f38d"
 
 [[package]]
 name = "semver-parser"

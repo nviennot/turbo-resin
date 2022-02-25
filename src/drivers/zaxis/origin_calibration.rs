@@ -44,5 +44,4 @@ pub async fn calibrate_origin(mc: &mut zaxis::MotionControlAsync, max_speed: Opt
     mc.set_origin(-BOTTOM_SENSOR_POSITION_MM.mm());
 
     mc.stop();
-    mc.wait(zaxis::Event::Idle).await;
 }

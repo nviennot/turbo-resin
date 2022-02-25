@@ -4,8 +4,10 @@
 #![no_main]
 #![feature(alloc_error_handler)]
 #![feature(int_abs_diff)]
-#![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
 #![feature(type_alias_impl_trait)]
+#![feature(maybe_uninit_as_bytes)]
+#![feature(maybe_uninit_uninit_array)]
+#![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
 
 #![feature(core_intrinsics)]
 
@@ -36,6 +38,7 @@ use drivers::{
     touch_screen::{TouchEvent, TouchScreen},
     display::Display as RawDisplay,
     zaxis,
+    usb::UsbHost,
 };
 use util::TaskRunner;
 use util::SharedWithInterrupt;
@@ -44,6 +47,7 @@ pub(crate) use runtime::debug;
 
 static LAST_TOUCH_EVENT: Mutex<RefCell<Option<TouchEvent>>> = Mutex::new(RefCell::new(None));
 static Z_AXIS: Forever<zaxis::MotionControlAsync> = Forever::new();
+static USB_HOST: Forever<UsbHost> = Forever::new();
 
 static TASK_RUNNER: Forever<TaskRunner<ui::Task>> = Forever::new();
 
@@ -58,6 +62,21 @@ mod maximum_priority_tasks {
 
 mod high_priority_tasks {
     use super::*;
+
+    #[interrupt]
+    fn OTG_FS() {
+        unsafe { USB_HOST.steal().on_interrupt() }
+    }
+}
+
+mod medium_priority_tasks {
+    use super::*;
+
+    #[embassy::task]
+    pub async fn usb_stack() {
+        let usb_host = unsafe { USB_HOST.steal() };
+        usb_host.main_loop().await;
+    }
 
     #[embassy::task]
     pub async fn touch_screen_task(mut touch_screen: TouchScreen) {
@@ -132,7 +151,7 @@ fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>) {
 }
 
 fn main() -> ! {
-    rtt_target::rtt_init_print!();
+    rtt_target::rtt_init_print!(NoBlockSkip, 10240);
 
     let machine = {
         let p = {
@@ -156,6 +175,8 @@ fn main() -> ! {
 
     let (lvgl, display) = lvgl_init(machine.display);
 
+    USB_HOST.put(machine.usb_host);
+
     //let mut lcd = machine.lcd;
     //lcd.draw_waves(16);
 
@@ -163,25 +184,36 @@ fn main() -> ! {
     // as we need to deliver precise pulses with micro-second accuracy.
     {
         let irq: interrupt::TIM7 = unsafe { ::core::mem::transmute(()) };
-        irq.set_priority(interrupt::Priority::P5);
+        irq.set_priority(interrupt::Priority::P4);
         irq.unpend();
         irq.enable();
     }
 
-    // High priority executor. It interrupts the low priority tasks (UI rendering)
+    // High priority for the USB port
+    {
+        let irq: interrupt::OTG_FS = unsafe { ::core::mem::transmute(()) };
+        irq.set_priority(interrupt::Priority::P5);
+        //irq.unpend();
+        irq.enable();
+    }
+
+    // Medium priority executor. It interrupts the low priority tasks (UI rendering)
     {
         let lvgl_ticks = lvgl.ticks();
         let touch_screen = machine.touch_screen;
         let irq = interrupt::take!(CAN1_RX0);
         irq.set_priority(interrupt::Priority::P6);
-        static EXECUTOR_HIGH: Forever<InterruptExecutor<interrupt::CAN1_RX0>> = Forever::new();
-        let executor = EXECUTOR_HIGH.put(InterruptExecutor::new(irq));
+        static EXECUTOR_MEDIUM: Forever<InterruptExecutor<interrupt::CAN1_RX0>> = Forever::new();
+        let executor = EXECUTOR_MEDIUM.put(InterruptExecutor::new(irq));
         executor.start(|spawner| {
-            spawner.spawn(high_priority_tasks::touch_screen_task(touch_screen)).unwrap();
-            spawner.spawn(high_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
-            spawner.spawn(high_priority_tasks::main_task()).unwrap();
+            spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
+            spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
+            spawner.spawn(medium_priority_tasks::main_task()).unwrap();
+            spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
         });
     }
+
+    // TODO release the stack
 
     // The idle task does UI drawing continuously.
     low_priority_tasks::idle_task(lvgl, display)
@@ -191,12 +223,16 @@ fn main() -> ! {
 #[cortex_m_rt::entry]
 fn main_() -> ! { main() }
 
-mod runtime {
+pub mod runtime {
     use super::*;
 
     #[alloc_error_handler]
     fn oom(l: core::alloc::Layout) -> ! {
         panic!("Out of memory. Failed to allocate {} bytes", l.size());
+    }
+
+    pub fn print_stack_size() {
+        debug!("stack size: {:x?}",  0x20000000 + 96*1024 - ((&mut [0u8;1]).as_ptr() as u32));
     }
 
     #[inline(never)]

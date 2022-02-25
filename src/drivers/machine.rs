@@ -12,6 +12,7 @@ use crate::drivers::{
     lcd::Lcd,
     clock,
     touch_screen::*,
+    usb::UsbHost,
 };
 
 pub struct Machine {
@@ -21,6 +22,7 @@ pub struct Machine {
     pub stepper: zaxis::MotionControl,
     pub lcd: Lcd,
     pub z_bottom_sensor: zaxis::BottomSensor,
+    pub usb_host: UsbHost,
 }
 
 use embassy_stm32::Peripherals;
@@ -100,6 +102,13 @@ impl Machine {
         );
 
         //--------------------------
+        // USB Host
+        //--------------------------
+        gpioa.pa9.into_pull_up_input(&mut gpioa.crh);
+        let usb_host = UsbHost::new(gpioa.pa11, gpioa.pa12,
+            dp.OTG_FS_GLOBAL, dp.USB_OTG_HOST, dp.OTG_FS_PWRCLK, &mut gpioa.crh);
+
+        //--------------------------
         //  Stepper motor (Z-axis)
         //--------------------------
 
@@ -122,6 +131,6 @@ impl Machine {
 
         let stepper = zaxis::MotionControl::new(drv8424, Timer::new(dp.TIM7, &clocks));
 
-        Self { ext_flash, display, touch_screen, stepper, lcd, z_bottom_sensor }
+        Self { ext_flash, display, touch_screen, stepper, lcd, z_bottom_sensor, usb_host }
     }
 }

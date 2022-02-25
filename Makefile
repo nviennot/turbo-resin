@@ -14,7 +14,7 @@ run: build
 	cargo run --release -q
 
 attach:
-	arm-none-eabi-gdb -q -x gdb/main.gdb ${TARGET_ELF}
+	arm-none-eabi-gdb -q -x gdb/attach.gdb ${TARGET_ELF}
 
 start_openocd:
 	openocd -f ${OPENOCD_INTERFACE} -f target/stm32f1x.cfg

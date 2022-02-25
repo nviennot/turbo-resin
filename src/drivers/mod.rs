@@ -7,3 +7,4 @@ pub mod display;
 pub mod touch_screen;
 pub mod zaxis;
 pub mod lcd;
+pub mod usb;

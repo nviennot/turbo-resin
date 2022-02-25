@@ -15,8 +15,9 @@ set print asm-demangle on
 #break rust_begin_unwind
 
 # Loads the plugin to read registers in readable format
-#source ./repos/PyCortexMDebug/scripts/gdb.py
+source ./repos/PyCortexMDebug/scripts/gdb.py
 #svd_load ./misc/gd32f307.svd
+svd_load ./misc/stm32f107.svd
 
 
 # Print 5 instructions every time we break.
@@ -32,3 +33,8 @@ define count_instr_until
   end
   print $count
 end
+
+# svd USB_OTG_HOST FS_HPRT
+# set *(0x50000440) = 0x2140d
+# 0x0800CFDC
+# svd USB_OTG_HOST FS_HPRT
