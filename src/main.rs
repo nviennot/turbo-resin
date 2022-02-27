@@ -3,13 +3,12 @@
 #![no_std]
 #![no_main]
 #![feature(alloc_error_handler)]
-#![feature(int_abs_diff)]
 #![feature(type_alias_impl_trait)]
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_uninit_array)]
 #![feature(generic_const_exprs)]
-#![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
-
+#![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code, unused_unsafe)]
+#![feature(generic_associated_types)]
 #![feature(core_intrinsics)]
 
 extern crate alloc;
@@ -71,12 +70,44 @@ mod high_priority_tasks {
 }
 
 mod medium_priority_tasks {
+    use crate::drivers::usb::{Msc, UsbResult};
+
     use super::*;
 
     #[embassy::task]
     pub async fn usb_stack() {
+        async fn usb_main(usb: &mut UsbHost) -> UsbResult<()> {
+            let mut disk = usb.wait_for_device::<Msc>().await?
+                .into_block_device().await?
+                .into_fatfs_controller();
+
+            debug!("Disk initialized");
+            let volume = disk.get_volume(embedded_sdmmc::VolumeIdx(0)).await.map_err(drop)?;
+            debug!("{:#?}", volume);
+
+            let root = disk.open_root_dir(&volume).map_err(drop)?;
+            debug!("Root dir:");
+            disk.iterate_dir(&volume, &root, |entry| {
+                if !entry.attributes.is_hidden() {
+                    if entry.attributes.is_directory() {
+                        debug!("  DIR  {}", entry.name);
+                    }
+                    if entry.attributes.is_archive() {
+                        debug!("  FILE {} {:3} MB", entry.name, entry.size/1024/1024);
+                    }
+                }
+            }).await.map_err(drop)?;
+
+            panic!("Done");
+
+            Ok(())
+        }
+
         let usb_host = unsafe { USB_HOST.steal() };
-        usb_host.main_loop().await;
+        loop {
+            let _ = usb_main(usb_host).await;
+            Timer::after(Duration::from_millis(100)).await
+        }
     }
 
     #[embassy::task]

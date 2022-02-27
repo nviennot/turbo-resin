@@ -19,7 +19,7 @@ use embassy::{
 
 use bitflags::bitflags;
 use crate::{debug, drivers::{clock::delay_ms, usb::Msc}};
-use super::{Channel, EndpointType, Direction, PacketType, enumerate};
+use super::{Channel, EndpointType, Direction, PacketType, enumerate, InterfaceHandler};
 
 pub type UsbResult<T> = Result<T, ()>;
 
@@ -280,7 +280,9 @@ impl UsbHost {
         }
     }
 
-    async fn run(&mut self) -> UsbResult<()> {
+    pub async fn wait_for_device<T: InterfaceHandler>(&mut self) -> UsbResult<T> {
+        self.init();
+
         debug!("USB waiting for device");
         self.wait_for_event(Event::PortConnectDetected).await?;
         debug!("USB device detected");
@@ -294,21 +296,7 @@ impl UsbHost {
         debug!("USB device enabled");
         Timer::after(Duration::from_millis(20)).await;
 
-        let mut msc = enumerate::<Msc>().await?;
-        msc.run().await
-    }
-
-    pub async fn main_loop(&mut self) {
-        loop {
-            self.init();
-
-            if self.run().await.is_err() {
-                debug!("USB Failed");
-                Timer::after(Duration::from_millis(1000)).await;
-            } else {
-                debug!("USB done. Starting over");
-            }
-        }
+        enumerate::<T>().await
     }
 }
 

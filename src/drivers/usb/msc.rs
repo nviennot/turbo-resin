@@ -1,7 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use core::mem::{self, MaybeUninit};
+use core::{mem::{self, MaybeUninit}, cell::{Cell, RefCell}};
 
+use futures::Future;
 use stm32f1xx_hal::{
     gpio::*,
     gpio::gpioa::*,
@@ -19,7 +20,9 @@ use embassy::{
 
 use bitflags::bitflags;
 use crate::{debug, drivers::clock::delay_ms};
-use super::{Channel, EndpointType, Direction, PacketType, ControlPipe, ensure, InterfaceHandler, InterfaceDescriptor, EndpointDescriptor, UsbResult, RequestType, Request};
+use super::{Channel, EndpointType, Direction, PacketType, ControlPipe, ensure,
+    InterfaceHandler, InterfaceDescriptor, EndpointDescriptor, UsbResult,
+    RequestType, Request, MscBlockDevice};
 
 const USB_MSC_CLASS: u8 = 8;
 const USB_MSC_SCSI_SUBCLASS: u8 = 6;
@@ -76,14 +79,14 @@ impl InterfaceHandler for Msc {
 }
 
 impl Msc {
-    async fn get_max_lun(&mut self) -> UsbResult<u8> {
+    pub async fn get_max_lun(&mut self) -> UsbResult<u8> {
         self.ctrl.request_in(
             RequestType::TYPE_CLASS | RequestType::RECIPIENT_INTERFACE,
             Request::GetMaxLun, 0, 0,
         ).await
     }
 
-    async fn reset_bot(&mut self) -> UsbResult<()> {
+    pub async fn reset_bot(&mut self) -> UsbResult<()> {
         self.ctrl.request_out(
             RequestType::TYPE_CLASS | RequestType::RECIPIENT_INTERFACE,
             Request::BotReset, 0, 0, &(),
@@ -134,65 +137,33 @@ impl Msc {
         Err(())
     }
 
-    async fn test_unit_ready(&mut self) -> UsbResult<()> {
+    pub async fn test_unit_ready(&mut self) -> UsbResult<()> {
         let cmd = scsi::TestUnitReady::new();
         self.bot_request_out(cmd, &mut[]).await
     }
 
-    async fn read_capacity10(&mut self) -> UsbResult<scsi::ReadCapacity10Response> {
+    pub async fn read_capacity10(&mut self) -> UsbResult<scsi::ReadCapacity10Response> {
         let cmd = scsi::ReadCapacity10::new();
         let mut response = MaybeUninit::<scsi::ReadCapacity10Response>::uninit();
         self.bot_request_in(cmd, response.as_bytes_mut()).await?;
         Ok(unsafe { response.assume_init() })
     }
 
-    async fn read10(&mut self, lba: u32, num_blocks: u16, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
+    pub async fn read10(&mut self, lba: u32, num_blocks: u16, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
         let cmd = scsi::Read10::new(lba, num_blocks);
         self.bot_request_in(cmd, dst).await
     }
 
-    async fn write10(&mut self, lba: u32, num_blocks: u16, src: &[u8]) -> UsbResult<()> {
+    pub async fn write10(&mut self, lba: u32, num_blocks: u16, src: &[u8]) -> UsbResult<()> {
         let cmd = scsi::Write10::new(lba, num_blocks);
         self.bot_request_out(cmd, src).await
     }
 
-    pub async fn run(&mut self) -> UsbResult<()> {
-        debug!("Init Mass Storage Class");
-
-        {
-            // Read the number of logical units, not that we'll be accessing multiple ones,
-            // We always pick the first one, but there might be a better thing to do.
-            let num_luns = self.get_max_lun().await.unwrap_or(0) + 1;
-            if num_luns > 1 {
-                debug!("Multiple logical units found ({}). Picking the first one", num_luns);
-            } else {
-                debug!("Logical units: 1");
-            }
-        }
-
-        self.test_unit_ready().await?;
-        debug!("Disk is ready");
-
-        {
-            let capacity = self.read_capacity10().await?;
-            let block_size = capacity.block_size();
-            let block_count = capacity.block_count();
-            let disk_size = (block_size as u64) * (block_count as u64);
-            debug!("Disk size: {}MB", disk_size/1024/1024);
-        }
-
-        // Reading a block
-        loop
-        {
-            let mut buf = [MaybeUninit::<u8>::uninit(); 512];
-            self.read10(0x4080, 1, &mut buf).await?;
-            let buf: &[u8] = unsafe { core::mem::transmute(&buf[..]) };
-            //debug!("sector read");
-        }
-
-        Ok(())
+    pub async fn into_block_device(self) -> UsbResult<MscBlockDevice> {
+        MscBlockDevice::new(self).await
     }
 }
+
 
 const CBW_SIG: u32 = 0x43425355; // Spells USBC
 const CSW_SIG: u32 = 0x53425355; // Spells USBS

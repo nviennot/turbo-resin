@@ -48,6 +48,7 @@ dependencies = [
  "embedded-graphics",
  "embedded-graphics-core",
  "embedded-hal 0.2.7",
+ "embedded-sdmmc",
  "futures",
  "gd32f3",
  "heapless",
@@ -541,6 +542,16 @@ version = "0.0.1"
 source = "git+https://github.com/embassy-rs/embedded-hal?branch=embassy#1fa64a1d2f9cc1a1ae632dbfcc4064a9f6504a3f"
 dependencies = [
  "embedded-hal 1.0.0-alpha.6",
+]
+
+[[package]]
+name = "embedded-sdmmc"
+version = "0.3.0"
+source = "git+https://github.com/nviennot/embedded-sdmmc-rs.git#9397a5d1074a5599bd7d7645041aa0ed2d6e30a3"
+dependencies = [
+ "byteorder",
+ "embedded-hal 0.2.7",
+ "log",
 ]
 
 [[package]]
