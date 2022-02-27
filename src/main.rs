@@ -7,7 +7,8 @@
 #![feature(type_alias_impl_trait)]
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_uninit_array)]
-#![allow(unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
+#![feature(generic_const_exprs)]
+#![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code)]
 
 #![feature(core_intrinsics)]
 

@@ -40,7 +40,7 @@ const FIFO_LEN: u16 = 320;
 // The FIFO SRAM gets partionned as we wish.
 // The sum of these constants must be less than 320.
 const RX_FIFO_LEN: u16 = 128;
-const TX_FIFO_LEN: u16 = 128;
+const NON_PERIODIC_TX_FIFO_LEN: u16 = 128;
 const PERIODIC_TX_FIFO_LEN: u16 = 64;
 
 pub struct UsbHost {
@@ -120,7 +120,7 @@ impl UsbHost {
 
                 // FIFO setup
                 {
-                    assert!(RX_FIFO_LEN+TX_FIFO_LEN+PERIODIC_TX_FIFO_LEN <= FIFO_LEN);
+                    assert!(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN+PERIODIC_TX_FIFO_LEN <= FIFO_LEN);
 
                     self.otg_global.fs_grxfsiz.write(|w| w
                         .rxfd().bits(RX_FIFO_LEN)
@@ -128,13 +128,23 @@ impl UsbHost {
 
                     self.otg_global.fs_gnptxfsiz_host().write(|w| w
                         .nptxfsa().bits(RX_FIFO_LEN)
-                        .nptxfd().bits(TX_FIFO_LEN)
+                        .nptxfd().bits(NON_PERIODIC_TX_FIFO_LEN)
                     );
 
                     self.otg_global.fs_hptxfsiz.write(|w| w
-                        .ptxsa().bits(RX_FIFO_LEN+TX_FIFO_LEN)
+                        .ptxsa().bits(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN)
                         .ptxfsiz().bits(PERIODIC_TX_FIFO_LEN)
                     );
+
+                    // Flush FIFOs, it must be done, otherwise, fs_gnptxsts.nptxfsav is all garbage.
+
+                    // Flush RX Fifo
+                    self.otg_global.fs_grstctl.write(|w| w.rxfflsh().set_bit());
+                    while self.otg_global.fs_grstctl.read().rxfflsh().bit_is_set() {}
+
+                    // Flush all TX Fifos
+                    self.otg_global.fs_grstctl.write(|w| w .txfflsh().set_bit().txfnum().bits(0b10000));
+                    while self.otg_global.fs_grstctl.read().txfflsh().bit_is_set() {}
                 }
 
                 // Specify which interrupts we care about
@@ -152,6 +162,7 @@ impl UsbHost {
                 )
             }
 
+            self.event.reset();
             self.otg_global.fs_gotgctl.modify(|_,w| w.dhnpen().set_bit());
 
             // HAL_HCD_Start() in the SDK
@@ -184,13 +195,13 @@ impl UsbHost {
         if intr.hcint().bit_is_set() { Channel::on_host_ch_interrupt(); }
 
         if intr.discint().bit_is_set() {
-            // TODO channels need to be signaled to fail.
-            debug!("usb interrupt: disconnect");
+            debug!("USB Disconnected");
             self.event.signal(Event::Disconnected);
+            Channel::on_host_disconnect_interrupt();
         }
 
         if intr.ipxfr_incompisoout().bit_is_set() {
-            debug!("usb interrupt: incomplete periodic tx");
+            debug!("USB incomplete periodic TX");
         }
     }
 
@@ -215,8 +226,8 @@ impl UsbHost {
                     self.event.signal(Event::PortEnabled);
                 } else {
                     debug!("Port disabled");
-                    Channel::disable_all();
                     self.event.signal(Event::Disconnected);
+                    Channel::on_host_disconnect_interrupt();
                 }
             }
 
@@ -225,6 +236,7 @@ impl UsbHost {
                 w.pocchng().set_bit();
                 debug!("Port went overcurrent");
                 self.event.signal(Event::Disconnected);
+                Channel::on_host_disconnect_interrupt();
             }
 
             w
@@ -252,28 +264,34 @@ impl UsbHost {
 
     fn reset_port(&self) {
         // Brings the D- D+ lines down to initiate a device reset
-        debug!("Resetting port");
         self.otg_host.fs_hprt.modify(|_,w| w.prst().set_bit());
         // 10ms is the minimum by the USB specs. We add margins.
         delay_ms(20);
         self.otg_host.fs_hprt.modify(|_,w| w.prst().clear_bit());
     }
 
-    async fn wait_for_event(&self, event: Event) -> UsbResult<()> {
-        ensure!(self.event.wait().await == event);
-        Ok(())
+    async fn wait_for_event(&self, wanted_event: Event) -> UsbResult<()> {
+        let event = self.event.wait().await;
+        if event != wanted_event {
+            debug!("While waiting for {:?}, received {:?}", wanted_event, event);
+            Err(())
+        } else {
+            Ok(())
+        }
     }
 
     async fn run(&mut self) -> UsbResult<()> {
+        debug!("USB waiting for device");
         self.wait_for_event(Event::PortConnectDetected).await?;
-        debug!("Port detected");
+        debug!("USB device detected");
 
         // Let the device boot. USB Specs say 200ms is enough, but some devices
         // can take longer apparently, so we'll wait a little longer.
         Timer::after(Duration::from_millis(300)).await;
+
         self.reset_port();
         self.wait_for_event(Event::PortEnabled).await?;
-        debug!("Port enabled");
+        debug!("USB device enabled");
         Timer::after(Duration::from_millis(20)).await;
 
         let mut msc = enumerate::<Msc>().await?;
@@ -283,9 +301,12 @@ impl UsbHost {
     pub async fn main_loop(&mut self) {
         loop {
             self.init();
+
             if self.run().await.is_err() {
-                debug!("USB Failed. Starting over");
-                Timer::after(Duration::from_millis(2*10000)).await;
+                debug!("USB Failed");
+                Timer::after(Duration::from_millis(1000)).await;
+            } else {
+                debug!("USB done. Starting over");
             }
         }
     }

@@ -2,7 +2,7 @@
 
 use bitflags::bitflags;
 use crate::{debug, drivers::clock::delay_ms};
-use core::mem::{self, MaybeUninit};
+use core::{mem::{self, MaybeUninit}, slice};
 use heapless::Vec;
 
 use super::{ensure, Channel, EndpointType, Direction, PacketType, UsbResult};
@@ -49,6 +49,7 @@ pub async fn enumerate<H: InterfaceHandler>() -> UsbResult<H> {
             ensure!(total_len as usize <= buf.len());
             let buf = &mut buf[0..total_len as usize];
             ctrl.request_bytes_in(
+                ControlPipe::STD_DEV,
                 Request::GetDescriptor,
                 (ConfigurationDescriptor::TYPE as u16) << 8,
                 config_index,
@@ -63,19 +64,17 @@ pub async fn enumerate<H: InterfaceHandler>() -> UsbResult<H> {
 
             for interface_index in 0..config.num_interfaces {
                 let interface = consume::<InterfaceDescriptor>(&mut full_cd_buf)?;
-                let mut endpoints: Vec<EndpointDescriptor, MAX_INTERFACES> = Vec::new();
 
-                for endpoint_index in 0..interface.num_endpoints {
-                    let ep_desc = consume::<EndpointDescriptor>(&mut full_cd_buf)?;
-                    endpoints.push(ep_desc).unwrap();
-                }
+                let endpoints = (0..interface.num_endpoints)
+                    .map(|_| consume::<EndpointDescriptor>(&mut full_cd_buf))
+                    .collect::<UsbResult<Vec<_, MAX_INTERFACES>>>()?;
 
                 //debug!("{:#?} {:#?}", interface, &endpoints);
 
-                if let Ok(if_handler) = H::activate(DEV_ADDR, interface, &endpoints) {
+                if let Ok(prepare_output) = H::prepare(DEV_ADDR, &interface, &endpoints) {
                     ctrl.set_configuration(config.configuration_value).await?;
-                    debug!("Configuration {} set", config.configuration_value);
-                    return Ok(if_handler);
+                    //debug!("Configuration {} set", config.configuration_value);
+                    return Ok(H::new(ctrl, prepare_output));
                 }
             }
         }
@@ -86,16 +85,23 @@ pub async fn enumerate<H: InterfaceHandler>() -> UsbResult<H> {
 }
 
 pub trait InterfaceHandler: Sized {
+    type PrepareOutput;
     /// Returns Some() when the handler accepts this interface. None otherwise.
-    fn activate(dev_addr: u8, if_desc: InterfaceDescriptor, ep_descs: &[EndpointDescriptor]) -> UsbResult<Self>;
+    fn prepare(dev_addr: u8, if_desc: &InterfaceDescriptor, ep_descs: &[EndpointDescriptor]) -> UsbResult<Self::PrepareOutput>;
+    fn new(ctrl: ControlPipe, activate: Self::PrepareOutput) -> Self;
+    // async in traits are not a stable thing, but we'd like this:
+    //   async fn run(&mut self);
 }
 
-struct ControlPipe {
+pub struct ControlPipe {
     ch_in: Channel,
     ch_out: Channel,
 }
 
+
 impl ControlPipe {
+    const STD_DEV: RequestType = RequestType::TYPE_STANDARD.union(RequestType::RECIPIENT_DEVICE);
+
     /// The control pipe always uses channel 0 and 1
     pub fn new(dev_addr: u8, max_packet_size: u16) -> Self {
         let ch_in  = Channel::new(0, dev_addr, Direction::In,  0, EndpointType::Control, max_packet_size);
@@ -104,60 +110,58 @@ impl ControlPipe {
     }
 
     pub async fn get_descriptor<T: Descriptor>(&mut self, index: u16) -> UsbResult<T> {
-        self.request_in(Request::GetDescriptor, (T::TYPE as u16) << 8, index).await
+        self.request_in(Self::STD_DEV, Request::GetDescriptor, (T::TYPE as u16) << 8, index).await
     }
 
     pub async fn set_address(&mut self, dev_addr: u8) -> UsbResult<()> {
-        self.request_out(Request::SetAddress, dev_addr as u16, 0, &()).await
+        self.request_out(Self::STD_DEV, Request::SetAddress, dev_addr as u16, 0, &()).await
     }
 
     pub async fn set_configuration(&mut self, configuration_value: u8) -> UsbResult<()> {
-        self.request_out(Request::SetConfiguration, configuration_value as u16, 0, &()).await
+        self.request_out(Self::STD_DEV, Request::SetConfiguration, configuration_value as u16, 0, &()).await
     }
 
     ////////////////////////////////////////////////////////////////////////
 
-    pub async fn request_in<T>(&mut self, request: Request, value: u16, index: u16) -> UsbResult<T> {
+    pub async fn request_in<T>(&mut self, request_type: RequestType, request: Request, value: u16, index: u16) -> UsbResult<T> {
         let mut result = MaybeUninit::<T>::uninit();
         let dst = result.as_bytes_mut();
-        self.request_bytes_in(request, value, index, dst).await?;
+        self.request_bytes_in(request_type, request, value, index, dst).await?;
         Ok(unsafe { result.assume_init() })
     }
 
-    pub async fn request_bytes_in(&mut self, request: Request, value: u16, index: u16, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
+    pub async fn request_out<T>(&mut self, request_type: RequestType, request: Request, value: u16, index: u16, src: &T) -> UsbResult<()> {
+        let ptr = (src as *const T) as *const u8;
+        let src = unsafe { slice::from_raw_parts(ptr, mem::size_of::<T>()) };
+        self.request_bytes_out(request_type, request, value, index, src).await
+    }
+
+    pub async fn request_bytes_in(&mut self, request_type: RequestType, request: Request, value: u16, index: u16, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
         let pkt = SetupPacket {
-            request_type: RequestType::IN | RequestType::TYPE_STANDARD | RequestType::RECIPIENT_DEVICE,
+            request_type: RequestType::IN | request_type,
             request, value, index,
             length: dst.len() as u16,
         };
 
-        self.ch_out.write(PacketType::Setup, &pkt).await?;
-        if dst.len() > 0 { self.ch_in.read_bytes(PacketType::Data1, dst).await?; }
-        self.ch_out.write(PacketType::Data1, &()).await?;
+        self.ch_out.write(Some(PacketType::Setup), &pkt).await?;
+        // TODO It's not clear if we need to force it to Data1, or we should be toggling.
+        // try with a small max_packet_size.
+        if dst.len() > 0 { self.ch_in.read_bytes(Some(PacketType::Data1), dst).await?; }
+        self.ch_out.write(Some(PacketType::Data1), &()).await?;
 
         Ok(())
     }
 
-    pub async fn request_out<T>(&mut self, request: Request, value: u16, index: u16, src: &T) -> UsbResult<()> {
-        let src = unsafe {
-            core::slice::from_raw_parts(
-                (src as *const T) as *const u8,
-                mem::size_of::<T>(),
-            )
-        };
-        self.request_bytes_out(request, value, index, src).await
-    }
-
-    pub async fn request_bytes_out(&mut self, request: Request, value: u16, index: u16, src: &[u8]) -> UsbResult<()> {
+    pub async fn request_bytes_out(&mut self, request_type: RequestType, request: Request, value: u16, index: u16, src: &[u8]) -> UsbResult<()> {
         let pkt = SetupPacket {
-            request_type: RequestType::OUT | RequestType::TYPE_STANDARD | RequestType::RECIPIENT_DEVICE,
+            request_type: RequestType::OUT | request_type,
             request, value, index,
             length: src.len() as u16,
         };
 
-        self.ch_out.write(PacketType::Setup, &pkt).await?;
-        if src.len() > 0 { self.ch_out.write_bytes(PacketType::Data1, src).await?; }
-        self.ch_in.read::<()>(PacketType::Data1).await?;
+        self.ch_out.write(Some(PacketType::Setup), &pkt).await?;
+        if src.len() > 0 { self.ch_out.write_bytes(Some(PacketType::Data1), src).await?; }
+        self.ch_in.read::<()>(Some(PacketType::Data1)).await?;
 
         Ok(())
     }
@@ -206,6 +210,10 @@ pub enum Request {
     GetInterface = 10,
     SetInterface = 11,
     SynchFrame = 12,
+
+    // Not sure if this is the right place, but it's fine for now
+    BotReset = 0xFF,
+    GetMaxLun = 0xFE,
 }
 
 #[derive(Copy, Clone, Eq, PartialEq, Debug)]
@@ -286,7 +294,7 @@ pub struct EndpointDescriptor {
     pub interval: u8,
 }
 
-trait Descriptor {
+pub trait Descriptor {
     const TYPE: DescriptorType;
 }
 
