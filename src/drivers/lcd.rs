@@ -12,6 +12,8 @@ use stm32f1xx_hal::{
     spi,
 };
 
+use core::future::Future;
+
 pub struct Lcd {
     cs: PA4<Output<PushPull>>,
     spi: Spi<
@@ -24,6 +26,10 @@ pub struct Lcd {
             ),
             u16,
          >,
+
+    // 4 pixels in a u16.
+    pixel_data: u16,
+    pixel_cnt: u8, // modulo 4
 }
 
 impl Lcd {
@@ -57,13 +63,13 @@ impl Lcd {
             ).frame_size_16bit()
         };
 
-        Self { cs, spi }
+        Self { cs, spi, pixel_data: 0, pixel_cnt: 0 }
     }
 
-    const COLS: u16 = 3840;
-    const ROWS: u16 = 2400;
+    pub const COLS: u16 = 3840;
+    pub const ROWS: u16 = 2400;
 
-    const DEFAULT_PALETTE: [u16; 16] = [
+    pub const DEFAULT_PALETTE: [u16; 16] = [
         0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
     ];
@@ -102,7 +108,12 @@ impl Lcd {
         })
     }
 
-    pub fn draw(&mut self, f: impl Fn(u16, u16) -> u8) {
+    /*
+    pub async fn draw_async<F,R,E>(&mut self, f: F) -> Result<(), E>
+        where
+            F: Fn(u16, u16) -> R,
+            R: Future<Output = Result<u8,E>>,
+    {
         self.cs.set_low();
         self.delay_150ns(10);
 
@@ -120,6 +131,63 @@ impl Lcd {
         for row in 0..Self::ROWS {
             for col in 0..Self::COLS/4 {
                 let color =
+                    (((f(row, 4*col+0).await?&0x0F) as u16) << 12) |
+                    (((f(row, 4*col+1).await?&0x0F) as u16) <<  8) |
+                    (((f(row, 4*col+2).await?&0x0F) as u16) <<  4) |
+                    (((f(row, 4*col+3).await?&0x0F) as u16) <<  0);
+                self.spi.spi_write(&[color]).unwrap();
+            }
+        }
+
+        self.delay_150ns(60);
+        self.cs.set_high();
+
+        Ok(())
+    }
+    */
+
+    pub fn start_draw(&mut self) {
+        self.cs.set_low();
+        self.delay_150ns(10);
+
+        // The FPGA seems a little buggy.
+        // It won't take the command well. Apparently, we have to send it twice.
+        // Otherwise, 2/3 of a second frame won't render. There's a strange bug.
+        self.cmd(Command::StartDrawing, None, None);
+        self.delay_150ns(60);
+        self.cs.set_high();
+        self.delay_150ns(6000); // 1ms delay
+        self.cs.set_low();
+        self.delay_150ns(10);
+        self.cmd(Command::StartDrawing, None, None);
+
+        self.pixel_data = 0;
+        self.pixel_cnt = 0;
+    }
+
+    pub fn push_pixel(&mut self, color: u8) {
+        assert!(color < 16);
+
+        self.pixel_data = (self.pixel_data << 4) | color as u16;
+        self.pixel_cnt += 1;
+
+        if self.pixel_cnt == 4 {
+            self.spi.spi_write(&[self.pixel_data]).unwrap();
+            self.pixel_data = 0;
+            self.pixel_cnt = 0;
+        }
+    }
+
+    pub fn end_draw(&mut self) {
+        self.delay_150ns(60);
+        self.cs.set_high();
+    }
+
+    pub fn draw(&mut self, f: impl Fn(u16, u16) -> u8) {
+        self.start_draw();
+        for row in 0..Self::ROWS {
+            for col in 0..Self::COLS/4 {
+                let color =
                     (((f(row, 4*col+0)&0x0F) as u16) << 12) |
                     (((f(row, 4*col+1)&0x0F) as u16) <<  8) |
                     (((f(row, 4*col+2)&0x0F) as u16) <<  4) |
@@ -127,9 +195,7 @@ impl Lcd {
                 self.spi.spi_write(&[color]).unwrap();
             }
         }
-
-        self.delay_150ns(60);
-        self.cs.set_high();
+        self.end_draw();
     }
 
     pub fn get_version(&mut self) -> u32 {

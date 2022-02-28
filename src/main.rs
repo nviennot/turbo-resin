@@ -17,6 +17,7 @@ mod drivers;
 mod consts;
 mod ui;
 mod util;
+mod file_formats;
 
 use core::cell::RefCell;
 use core::mem::MaybeUninit;
@@ -38,7 +39,7 @@ use drivers::{
     touch_screen::{TouchEvent, TouchScreen},
     display::Display as RawDisplay,
     zaxis,
-    usb::UsbHost,
+    usb::UsbHost, lcd::Lcd,
 };
 use util::TaskRunner;
 use util::SharedWithInterrupt;
@@ -48,8 +49,8 @@ pub(crate) use runtime::debug;
 static LAST_TOUCH_EVENT: Mutex<RefCell<Option<TouchEvent>>> = Mutex::new(RefCell::new(None));
 static Z_AXIS: Forever<zaxis::MotionControlAsync> = Forever::new();
 static USB_HOST: Forever<UsbHost> = Forever::new();
-
 static TASK_RUNNER: Forever<TaskRunner<ui::Task>> = Forever::new();
+static LCD: Forever<Lcd> = Forever::new();
 
 mod maximum_priority_tasks {
     use super::*;
@@ -70,6 +71,8 @@ mod high_priority_tasks {
 }
 
 mod medium_priority_tasks {
+    use embedded_sdmmc::Mode;
+
     use crate::drivers::usb::{Msc, UsbResult};
 
     use super::*;
@@ -77,28 +80,111 @@ mod medium_priority_tasks {
     #[embassy::task]
     pub async fn usb_stack() {
         async fn usb_main(usb: &mut UsbHost) -> UsbResult<()> {
-            let mut disk = usb.wait_for_device::<Msc>().await?
+            let mut fs = usb.wait_for_device::<Msc>().await?
                 .into_block_device().await?
                 .into_fatfs_controller();
 
-            debug!("Disk initialized");
-            let volume = disk.get_volume(embedded_sdmmc::VolumeIdx(0)).await.map_err(drop)?;
-            debug!("{:#?}", volume);
+            //debug!("Disk initialized");
+            let mut volume = fs.get_volume(embedded_sdmmc::VolumeIdx(0)).await.map_err(drop)?;
 
-            let root = disk.open_root_dir(&volume).map_err(drop)?;
-            debug!("Root dir:");
-            disk.iterate_dir(&volume, &root, |entry| {
+            //debug!("{:#?}", volume);
+            let root = fs.open_root_dir(&volume).map_err(drop)?;
+            //debug!("Root dir:");
+
+            fs.iterate_dir(&volume, &root, |entry| {
                 if !entry.attributes.is_hidden() {
                     if entry.attributes.is_directory() {
-                        debug!("  DIR  {}", entry.name);
+                        //debug!("  DIR  {}", entry.name);
                     }
                     if entry.attributes.is_archive() {
-                        debug!("  FILE {} {:3} MB", entry.name, entry.size/1024/1024);
+                        debug!("  FILE {} {} {:3} MB", entry.name, entry.mtime, entry.size/1024/1024);
                     }
                 }
             }).await.map_err(drop)?;
 
-            panic!("Done");
+            let mut file = fs.open_file_in_dir(&mut volume, &root, "RESINX~1.PWM", Mode::ReadOnly).await.map_err(drop)?;
+            debug!("File open, size={}", file.length());
+
+            use file_formats::photon::*;
+            let layer_definition_offset = {
+                let mut header = MaybeUninit::<Header>::uninit();
+                fs.read(&volume, &mut file, unsafe { core::mem::transmute(header.as_bytes_mut()) } ).await.map_err(drop)?;
+                let header = unsafe { header.assume_init() };
+                header.layer_definition_offset
+            };
+
+
+            let num_layers = {
+                file.seek_from_start(layer_definition_offset)?;
+                let mut header = MaybeUninit::<LayerDefinition>::uninit();
+                fs.read(&volume, &mut file, unsafe { core::mem::transmute(header.as_bytes_mut()) } ).await.map_err(drop)?;
+                let header = unsafe { header.assume_init() };
+                header.layer_count
+            };
+
+            debug!("Num layers: {}", num_layers);
+
+            let layers_offset = layer_definition_offset + core::mem::size_of::<LayerDefinition>() as u32;
+
+            let (data_offset, data_size) = {
+                let layer_index = 10;
+                file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32)?;
+                let mut header = MaybeUninit::<Layer>::uninit();
+                fs.read(&volume, &mut file, unsafe { core::mem::transmute(header.as_bytes_mut()) } ).await.map_err(drop)?;
+                let header = unsafe { header.assume_init() };
+                (header.data_address, header.data_length)
+            };
+
+            debug!("Data address={:x}, size={:x}", data_offset, data_size);
+
+            {
+                file.seek_from_start(data_offset)?;
+
+                const BUF_LEN: usize = 1024;
+                let mut buffer = [0u8; BUF_LEN];
+                let mut data_left = data_size as usize;
+
+                let lcd = unsafe { LCD.steal() };
+
+                //lcd.draw_waves(8);
+                lcd.start_draw();
+
+                //let pixels_left = Lcd::ROWS * Lcd::COLS;
+                let mut pixel_drawn = 0 as usize;
+
+                let mut long_color_repeat: Option<(u8, u8)> = None;
+
+                while data_left > 0 {
+                    let buf = &mut buffer[0..data_left.min(BUF_LEN)];
+                    data_left -= buf.len();
+                    fs.read(&volume, &mut file, buf).await.map_err(drop)?;
+
+                    // Some sort of RLE encoding
+                    for b in buf {
+                        if let Some((color, repeat)) = long_color_repeat.take() {
+                            let repeat = ((repeat as u16) << 8) | *b as u16;
+                            pixel_drawn += repeat as usize;
+                            for _ in 0..repeat { lcd.push_pixel(color) }
+                        } else {
+                            let color = *b >> 4;
+                            let repeat = *b & 0x0F;
+                            if color == 0 || color == 0xF {
+                                long_color_repeat = Some((color, repeat));
+                            } else {
+                                pixel_drawn += repeat as usize;
+                                for _ in 0..repeat { lcd.push_pixel(color) }
+                            }
+                        }
+                    }
+
+                }
+
+                lcd.end_draw();
+            }
+
+            debug!("Done drawing");
+
+            Timer::after(Duration::from_secs(10000)).await;
 
             Ok(())
         }
@@ -204,6 +290,8 @@ fn main() -> ! {
         SharedWithInterrupt::new(machine.stepper),
         machine.z_bottom_sensor,
     ));
+
+    LCD.put(machine.lcd);
 
     let (lvgl, display) = lvgl_init(machine.display);
 
