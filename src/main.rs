@@ -102,7 +102,7 @@ mod medium_priority_tasks {
                 }
             }).await.map_err(drop)?;
 
-            let mut file = fs.open_file_in_dir(&mut volume, &root, "RESINX~1.PWM", Mode::ReadOnly).await.map_err(drop)?;
+            let mut file = fs.open_file_in_dir(&mut volume, &root, "RESINX~2.PWM", Mode::ReadOnly).await.map_err(drop)?;
             debug!("File open, size={}", file.length());
 
             use file_formats::photon::*;
@@ -127,7 +127,7 @@ mod medium_priority_tasks {
             let layers_offset = layer_definition_offset + core::mem::size_of::<LayerDefinition>() as u32;
 
             let (data_offset, data_size) = {
-                let layer_index = 10;
+                let layer_index = 7;
                 file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32)?;
                 let mut header = MaybeUninit::<Layer>::uninit();
                 fs.read(&volume, &mut file, unsafe { core::mem::transmute(header.as_bytes_mut()) } ).await.map_err(drop)?;
@@ -171,6 +171,7 @@ mod medium_priority_tasks {
                             if color == 0 || color == 0xF {
                                 long_color_repeat = Some((color, repeat));
                             } else {
+                                //let color = if color == 0 { 0 } else { 0xf };
                                 pixel_drawn += repeat as usize;
                                 for _ in 0..repeat { lcd.push_pixel(color) }
                             }
