@@ -3,10 +3,9 @@ MEMORY
   /* The flash on the GD32F307 is 512K, in two different banks of 256KB.
    * The first bank has pages of 2KB, and the second bank 4KB.
    * There are delays when the CPU executes instructions from the second bank.
-   * Let's ignore the second bank for now.
    */
   FLASH : ORIGIN = 0x08000000, LENGTH = 256K
-  /*FLASH_RODATA : ORIGIN = 0x08000000, LENGTH = 256K*/
+  FLASH_RODATA : ORIGIN = ORIGIN(FLASH) + 256K, LENGTH = 256K
   RAM : ORIGIN = 0x20000000, LENGTH = 96K
 }
 
@@ -37,15 +36,22 @@ MEMORY
 */
 
 SECTIONS {
+  .lvgl.rodata ORIGIN(FLASH_RODATA) :
+  {
+    *liblvgl*:*(.rodata .rodata.*);
+  } > FLASH_RODATA
+
+  .libs.rodata ALIGN(4) :
+  {
+    *lib*:*(.rodata .rodata.*);
+  } > FLASH_RODATA
+  /* TODO put the app's .rodata in the FLASH_RO region */
+
+
   /* 0x150 is the end of the not yet defined vector_table */
   .lvgl.text ORIGIN(FLASH) + 0x150:
   {
     *liblvgl*:*(.text .text.*);
-  } > FLASH
-
-  .lvgl.rodata ALIGN(4) :
-  {
-    *liblvgl*:*(.rodata .rodata.*);
   } > FLASH
 
   .libs.text ALIGN(4) :
@@ -53,11 +59,6 @@ SECTIONS {
     *lib*:*(.text .text.*);
   } > FLASH
 
-  .libs.rodata ALIGN(4) :
-  {
-    *lib*:*(.rodata .rodata.*);
-  } > FLASH
-}
+_stext = ALIGN(4);
 
-/* Starts the main code section after the libraries */
-_stext = ADDR(.libs.rodata) + SIZEOF(.libs.rodata);
+}

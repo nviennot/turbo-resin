@@ -23,41 +23,30 @@ for line in fileinput.input():
 
 sections.sort(key=lambda x: x[2])
 
-ROM_SIZE = 256*1024
-RAM_SIZE = 96*1024
-RAM_ORIGIN = 0x20000000
+def KB(v):
+    return v * 1024
 
-total_rom_size = 0
-total_text_size = 0
-total_data_size = 0
-total_bss_size = 0
-total_ram_size = 0;
+regions = [
+    {'name': 'FLASH',    'origin': 0x08000000,         'len': KB(256), 'used': 0},
+    {'name': 'FLASH_RO', 'origin': 0x08000000+KB(256), 'len': KB(256), 'used': 0},
+    {'name': 'RAM',      'origin': 0x20000000,         'len': KB(96),  'used': 0},
+]
 
 def hsize(size, rel):
     return f"{size/1024:7.1f}K ({100*size/rel:.1f}%)"
 
-for (name, size, vma, lma, t) in sections:
-    if t == "TEXT":
-        total_text_size += size
-        total_rom_size += size
-        print(f"{name:14} {t:4} {hsize(size, ROM_SIZE)}")
-    elif t == "DATA":
-        total_data_size += size
-        total_rom_size += size
-        if vma >= RAM_ORIGIN:
-            total_ram_size += size
-            print(f"{name:14} {t:4} {hsize(size, RAM_SIZE)}")
-        else:
-            print(f"{name:14} {t:4} {hsize(size, ROM_SIZE)}")
-    elif t == "BSS":
-        total_bss_size += size
-        total_ram_size += size
-        print(f"{name:14} {t:4} {hsize(size, RAM_SIZE)}")
+def in_region(region, addr):
+    return region['origin'] <= addr < region['origin'] + region['len']
 
-#print()
-#print(f"{'Total text':14} {hsize(total_text_size, ROM_SIZE)}")
-#print(f"{'Total data':14} {hsize(total_data_size, RAM_SIZE)}")
-#print(f"{'Total  bss':14} {hsize(total_bss_size, RAM_SIZE)}")
+for (name, size, vma, lma, t) in sections:
+    # a section can belong in two regions, like .data being both in flash and
+    # RAM (non-zero global variables).
+
+    for region in regions:
+        if in_region(region, vma) or in_region(region, lma):
+            region['used'] += size
+            print(f"{region['name']:9} {t:5} {name:14} {hsize(size, region['len'])}")
+
 print()
-print(f"{'Total ROM':14} {hsize(total_rom_size, ROM_SIZE)}")
-print(f"{'Total RAM':14} {hsize(total_ram_size, RAM_SIZE)}")
+for region in regions:
+    print(f"Total {region['name']:8} {hsize(region['used'], region['len'])}")

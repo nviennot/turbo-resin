@@ -1,3 +1,7 @@
+# SPDX-License-Identifier: GPL-3.0-or-later
+
+# Based on https://github.com/sn4k3/UVtools/blob/master/UVtools.Core/FileFormats/PhotonWorkshopFile.cs
+
 meta:
   id: photon
   file-extension: pwma

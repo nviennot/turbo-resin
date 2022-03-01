@@ -146,13 +146,21 @@ mod medium_priority_tasks {
 
                 let lcd = unsafe { LCD.steal() };
 
+                lcd.draw_all_black();
+                Timer::after(Duration::from_millis(2*5000)).await;
+
+                let mut palette = [0xFF; 16];
+                palette[0] = 0;
+                lcd.set_palette(&palette);
+
                 //lcd.draw_waves(8);
                 lcd.start_draw();
 
                 //let pixels_left = Lcd::ROWS * Lcd::COLS;
-                let mut pixel_drawn = 0 as usize;
-
+                let mut x = 0;
+                let mut y = 0;
                 let mut long_color_repeat: Option<(u8, u8)> = None;
+
 
                 while data_left > 0 {
                     let buf = &mut buffer[0..data_left.min(BUF_LEN)];
@@ -161,29 +169,62 @@ mod medium_priority_tasks {
 
                     // Some sort of RLE encoding
                     for b in buf {
-                        if let Some((color, repeat)) = long_color_repeat.take() {
+                        let (color, repeat) = if let Some((color, repeat)) = long_color_repeat.take() {
                             let repeat = ((repeat as u16) << 8) | *b as u16;
-                            pixel_drawn += repeat as usize;
-                            for _ in 0..repeat { lcd.push_pixel(color) }
+                            (color, repeat)
                         } else {
                             let color = *b >> 4;
                             let repeat = *b & 0x0F;
                             if color == 0 || color == 0xF {
                                 long_color_repeat = Some((color, repeat));
+                                continue;
                             } else {
-                                //let color = if color == 0 { 0 } else { 0xf };
-                                pixel_drawn += repeat as usize;
-                                for _ in 0..repeat { lcd.push_pixel(color) }
+                                (color, repeat as u16)
+                            }
+                        };
+
+                        for _ in 0..repeat {
+                            let tile = ((3*x / Lcd::COLS)+1) + ((2*y / Lcd::ROWS)*3);
+                            let color = if color > 0 { tile as u8 } else { color };
+
+                            lcd.push_pixel(color);
+                            x += 1;
+                            if x == Lcd::COLS {
+                                x = 0;
+                                y += 1;
                             }
                         }
+
+
                     }
 
                 }
 
                 lcd.end_draw();
+                debug!("Done drawing");
+                Timer::after(Duration::from_millis(2*1000)).await;
+
+                loop {
+                    for i in 1..8 {
+                        for j in 1..7 {
+                            palette[j] = if i > j { 0xff } else { 0x00 };
+                        }
+
+                        lcd.set_palette(&palette);
+
+                        if i == 1 {
+                            Timer::after(Duration::from_millis(2*1000)).await;
+                        }
+
+                        Timer::after(Duration::from_millis(2*200)).await;
+                    }
+                    Timer::after(Duration::from_millis(2*1000)).await;
+                }
+
             }
 
-            debug!("Done drawing");
+
+
 
             Timer::after(Duration::from_secs(10000)).await;
 
