@@ -10,6 +10,7 @@
 #![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code, unused_unsafe)]
 #![feature(generic_associated_types)]
 #![feature(core_intrinsics)]
+//#![feature(associated_type_defaults)]
 
 extern crate alloc;
 
@@ -160,6 +161,7 @@ mod medium_priority_tasks {
                 let mut x = 0;
                 let mut y = 0;
                 let mut long_color_repeat: Option<(u8, u8)> = None;
+
 
 
                 while data_left > 0 {

@@ -7,6 +7,8 @@ use heapless::Vec;
 
 use super::{ensure, Channel, EndpointType, Direction, PacketType, UsbResult};
 
+use crate::util::{Read,Write};
+
 // A regular configuration descriptor is 32 bytes, this is plenty of margin.
 const CONFIGURATION_DESCRIPTOR_BUFFER_SIZE: usize = 256;
 const MAX_INTERFACES: usize = 2;
@@ -136,32 +138,36 @@ impl ControlPipe {
         self.request_bytes_out(request_type, request, value, index, src).await
     }
 
-    pub async fn request_bytes_in(&mut self, request_type: RequestType, request: Request, value: u16, index: u16, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
+    pub async fn request_bytes_in(&mut self, request_type: RequestType, request: Request, value: u16, index: u16, buf: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
         let pkt = SetupPacket {
             request_type: RequestType::IN | request_type,
             request, value, index,
-            length: dst.len() as u16,
+            length: buf.len() as u16,
         };
 
-        self.ch_out.write(Some(PacketType::Setup), &pkt).await?;
-        // TODO It's not clear if we need to force it to Data1, or we should be toggling.
-        // try with a small max_packet_size.
-        if dst.len() > 0 { self.ch_in.read_bytes(Some(PacketType::Data1), dst).await?; }
-        self.ch_out.write(Some(PacketType::Data1), &()).await?;
+        self.ch_out.with_pid(PacketType::Setup).write_obj(&pkt).await?;
+        if !buf.is_empty() {
+            // TODO It's not clear if we need to force it to Data1, or we should be toggling.
+            // try with a small max_packet_size.
+            self.ch_in.with_pid(PacketType::Data1).read(buf).await?;
+        }
+        self.ch_out.with_pid(PacketType::Data1).write_obj(&pkt).await?;
 
         Ok(())
     }
 
-    pub async fn request_bytes_out(&mut self, request_type: RequestType, request: Request, value: u16, index: u16, src: &[u8]) -> UsbResult<()> {
+    pub async fn request_bytes_out(&mut self, request_type: RequestType, request: Request, value: u16, index: u16, buf: &[u8]) -> UsbResult<()> {
         let pkt = SetupPacket {
             request_type: RequestType::OUT | request_type,
             request, value, index,
-            length: src.len() as u16,
+            length: buf.len() as u16,
         };
 
-        self.ch_out.write(Some(PacketType::Setup), &pkt).await?;
-        if src.len() > 0 { self.ch_out.write_bytes(Some(PacketType::Data1), src).await?; }
-        self.ch_in.read::<()>(Some(PacketType::Data1)).await?;
+        self.ch_out.with_pid(PacketType::Setup).write_obj(&pkt).await?;
+        if !buf.is_empty() {
+            self.ch_out.with_pid(PacketType::Data1).write(buf).await?;
+        }
+        self.ch_in.with_pid(PacketType::Data1).read(&mut []).await?;
 
         Ok(())
     }

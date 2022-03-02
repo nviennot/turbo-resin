@@ -12,6 +12,10 @@ use stm32f1xx_hal::{
     pac::{self, usb_otg_host::{FS_HCCHAR0, FS_HCINT0, FS_HCINTMSK0, FS_HCTSIZ0}},
 };
 
+use crate::util::{Read, Write, impl_read_obj, impl_write_obj};
+use core::future::Future;
+
+
 use embassy::{
     channel::signal::Signal,
 };
@@ -278,7 +282,7 @@ impl Channel {
                 //debug!("Channel halted. Failing RX");
                 self.signal_event(ChannelEvent::FatalError);
             }
-            v @ _ => {
+            v => {
                 panic!("Unknown packet status: {:x}", v);
             }
         }
@@ -296,7 +300,7 @@ impl Channel {
         }
     }
 
-    pub fn stop_pending_xfer(&self) {
+    fn stop_pending_xfer(&self) {
         self.get_registers().0.modify(|_,w| w
             .chdis().set_bit()
             .chena().clear_bit()
@@ -304,62 +308,58 @@ impl Channel {
         self.signal_event(ChannelEvent::FatalError);
     }
 
-    pub async fn read<T>(&mut self, packet_type: Option<PacketType>) -> UsbResult<T> {
-        let mut result = MaybeUninit::<T>::uninit();
-        let dst = result.as_bytes_mut();
-        self.read_bytes(packet_type, dst).await?;
-        Ok(unsafe { result.assume_init() })
-    }
-
-    pub async fn write<T>(&mut self, packet_type: Option<PacketType>, src: &T) -> UsbResult<()> {
-        let ptr = (src as *const T) as *const u8;
-        let src = unsafe { slice::from_raw_parts(ptr, mem::size_of::<T>()) };
-        self.write_bytes(packet_type, src).await
-    }
-
-    pub async fn read_bytes(&mut self, packet_type: Option<PacketType>, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
-        let ctx = self.interrupt_context();
-        let mut num_attempts_left = NUM_XFER_ATTEMPTS;
-
-        //debug!("read_bytes, size: {}", dst.len());
-
-        loop {
-            // transmute to because ctx.buf has a static lifetime.
-            // It's a lie, but we'll cleanup the reference right after.
-            ctx.buf = Some(unsafe { core::mem::transmute(&mut dst[..]) });
-            self.prepare_channel_xfer(packet_type, dst.len(), Direction::In);
-            let event = ctx.event_signal.wait().await;
-
-            match event {
-                ChannelEvent::Complete => return Ok(()),
-                ChannelEvent::FatalError => return Err(()),
-                ChannelEvent::RetryTransaction => {
-                    num_attempts_left -= 1;
-                    if num_attempts_left == 0 { debug!("RX retried too many times. Abort.")}
-                    ensure!(num_attempts_left > 0);
-                }
-            }
+    pub fn with_pid(&mut self, packet_type: PacketType) -> ChannelAccessor {
+        ChannelAccessor {
+            channel: self,
+            packet_type: Some(packet_type),
         }
     }
 
-    pub async fn write_bytes(&mut self, packet_type: Option<PacketType>, src: &[u8]) -> UsbResult<()> {
-        let ctx = self.interrupt_context();
-        let mut num_attempts_left = NUM_XFER_ATTEMPTS;
+    pub fn with_data_toggle(&mut self) -> ChannelAccessor {
+        ChannelAccessor {
+            channel: self,
+            packet_type: None,
+        }
+    }
 
+    pub async fn read(&mut self, packet_type: Option<PacketType>, buf: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
+        //debug!("read_bytes, size: {}", dst.len());
+        let r = self.wait_for_completion(|self_| {
+            let ctx = self_.interrupt_context();
+            // transmute to because ctx.buf has a static lifetime.
+            // It's a lie, but we'll cleanup the reference right after.
+            ctx.buf = Some(unsafe { core::mem::transmute(&mut buf[..]) });
+            self_.prepare_channel_xfer(packet_type, buf.len(), Direction::In);
+        }).await;
+        self.interrupt_context().buf = None;
+        r
+    }
+
+    pub async fn write(&mut self, packet_type: Option<PacketType>, buf: &[u8]) -> UsbResult<()> {
+        self.wait_for_completion(|self_| {
+            self_.prepare_channel_xfer(packet_type, buf.len(), Direction::Out);
+            // We are writing, and it's blocking when the FIFO is full. Fine for now.
+            self_.write_to_non_periodic_fifo(buf);
+        }).await
+    }
+
+    async fn wait_for_completion(&mut self, mut f: impl FnMut(&mut Self)) -> UsbResult<()> {
         // Ensure the channel is not being used
         assert!(self.get_registers().0.read().chena().bit_is_clear());
 
-        loop {
-            self.prepare_channel_xfer(packet_type, src.len(), Direction::Out);
-            self.write_to_non_periodic_fifo(src);
+        let mut num_attempts_left = NUM_XFER_ATTEMPTS;
 
-            match ctx.event_signal.wait().await {
+        loop {
+            f(self);
+            match self.interrupt_context().event_signal.wait().await {
                 ChannelEvent::Complete => return Ok(()),
                 ChannelEvent::FatalError => return Err(()),
                 ChannelEvent::RetryTransaction => {
                     num_attempts_left -= 1;
-                    if num_attempts_left == 0 { debug!("TX retried too many times. Abort")}
-                    ensure!(num_attempts_left > 0);
+                    if num_attempts_left == 0 {
+                        debug!("Data transfer retried too many times. Aborting.");
+                        return Err(());
+                    }
                 }
             }
         }
@@ -386,7 +386,6 @@ impl Channel {
     }
 
 
-    #[inline(never)]
     fn write_to_non_periodic_fifo(&mut self, mut src: &[u8]) {
         let dst = self.get_fifo_ptr();
 
@@ -467,6 +466,34 @@ impl Channel {
             );
         }
     }
+}
+
+pub struct ChannelAccessor<'b> {
+    channel: &'b mut Channel,
+    packet_type: Option<PacketType>,
+}
+
+impl<'b> Read for ChannelAccessor<'b> {
+    type Error = ();
+    type ReadFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
+
+    fn read<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadFuture<'a> {
+        self.channel.read(self.packet_type, buf)
+    }
+}
+
+impl<'b> Write for ChannelAccessor<'b> {
+    type Error = ();
+    type WriteFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
+
+    fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
+        self.channel.write(self.packet_type, buf)
+    }
+}
+
+impl<'b> ChannelAccessor<'b> {
+    impl_read_obj!(());
+    impl_write_obj!(());
 }
 
 #[inline(always)]

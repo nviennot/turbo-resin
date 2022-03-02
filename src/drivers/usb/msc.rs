@@ -19,10 +19,12 @@ use embassy::{
 };
 
 use bitflags::bitflags;
-use crate::{debug, drivers::clock::delay_ms};
+use crate::{debug, drivers::clock::delay_ms, util::DirectionBuffer};
 use super::{Channel, EndpointType, Direction, PacketType, ControlPipe, ensure,
     InterfaceHandler, InterfaceDescriptor, EndpointDescriptor, UsbResult,
     RequestType, Request, MscBlockDevice};
+
+use crate::util::{Read, Write};
 
 const USB_MSC_CLASS: u8 = 8;
 const USB_MSC_SCSI_SUBCLASS: u8 = 6;
@@ -93,44 +95,20 @@ impl Msc {
         ).await
     }
 
-    async fn bot_request_in<T: 'static>(&mut self, cmd: T, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()>
+    async fn bot_request<T: 'static>(&mut self, cmd: T, mut buf: DirectionBuffer<'_>) -> UsbResult<()>
       where [(); 16 - core::mem::size_of::<T>()]: {
-        let cmd = CommandBlockWrapper::new(Direction::In, dst.len() as u32, cmd);
+        let cmd = CommandBlockWrapper::new(Direction::In, buf.len() as u32, cmd);
         for i in 0..NUM_ATTEMPS {
-            //debug!("request_in attempt={}", i);
-            self.data_out.write(None, &cmd).await?;
-            //debug!("request_in cmd sent");
-            if !dst.is_empty() {
-                self.data_in.read_bytes(None, dst).await?;
-                //debug!("IN read bytes len={}", dst.len());
+            self.data_out.with_data_toggle().write_obj(&cmd).await?;
+            if !buf.is_empty() {
+                match &mut buf {
+                    DirectionBuffer::In(buf) => self.data_in.with_data_toggle().read(buf).await?,
+                    DirectionBuffer::Out(buf) => self.data_out.with_data_toggle().write(buf).await?,
+                }
             }
-            if self.data_in.read::<CommandStatusWrapper>(None).await?.success() {
-                //debug!("status received, OK");
+            if self.data_in.with_data_toggle().read_obj::<CommandStatusWrapper>().await?.success() {
                 return Ok(());
             }
-            //debug!("status bad");
-            Timer::after(Duration::from_millis(1)).await;
-        }
-        debug!("MSC command retried too many times. Abort");
-        Err(())
-    }
-
-    async fn bot_request_out<T: 'static>(&mut self, cmd: T, src: &[u8]) -> UsbResult<()>
-      where [(); 16 - core::mem::size_of::<T>()]: {
-        let cmd = CommandBlockWrapper::new(Direction::Out, src.len() as u32, cmd);
-        for i in 0..NUM_ATTEMPS {
-            //debug!("request_out attempt={}", i);
-            self.data_out.write(None, &cmd).await?;
-            //debug!("request_out cmd sent");
-            if !src.is_empty() {
-                self.data_out.write_bytes(None, src).await?;
-                //debug!("OUT write bytes len={}", src.len());
-            }
-            if self.data_in.read::<CommandStatusWrapper>(None).await?.success() {
-                //debug!("status received, OK");
-                return Ok(());
-            }
-            //debug!("status bad");
             Timer::after(Duration::from_millis(1)).await;
         }
         debug!("MSC command retried too many times. Abort");
@@ -139,24 +117,24 @@ impl Msc {
 
     pub async fn test_unit_ready(&mut self) -> UsbResult<()> {
         let cmd = scsi::TestUnitReady::new();
-        self.bot_request_out(cmd, &mut[]).await
+        self.bot_request(cmd, DirectionBuffer::Out(&mut[])).await
     }
 
     pub async fn read_capacity10(&mut self) -> UsbResult<scsi::ReadCapacity10Response> {
         let cmd = scsi::ReadCapacity10::new();
         let mut response = MaybeUninit::<scsi::ReadCapacity10Response>::uninit();
-        self.bot_request_in(cmd, response.as_bytes_mut()).await?;
+        self.bot_request(cmd, DirectionBuffer::In(response.as_bytes_mut())).await?;
         Ok(unsafe { response.assume_init() })
     }
 
     pub async fn read10(&mut self, lba: u32, num_blocks: u16, dst: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
         let cmd = scsi::Read10::new(lba, num_blocks);
-        self.bot_request_in(cmd, dst).await
+        self.bot_request(cmd, DirectionBuffer::In(dst)).await
     }
 
     pub async fn write10(&mut self, lba: u32, num_blocks: u16, src: &[u8]) -> UsbResult<()> {
         let cmd = scsi::Write10::new(lba, num_blocks);
-        self.bot_request_out(cmd, src).await
+        self.bot_request(cmd, DirectionBuffer::Out(src)).await
     }
 
     pub async fn into_block_device(self) -> UsbResult<MscBlockDevice> {
