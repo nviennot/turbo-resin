@@ -56,6 +56,11 @@ pub mod zaxis {
     }
 }
 
+pub mod io {
+    // This should be at least one block_size = 512 to avoid degrading perfs
+    pub const FILE_READER_BUFFER_SIZE: usize = 1024;
+}
+
 pub mod touch_screen {
     // The higher the more sensitive to touches.
     // Under full pressure, pressure == 2.0

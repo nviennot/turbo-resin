@@ -2,20 +2,33 @@
 
 use core::{
     future::Future,
-    mem::{self, MaybeUninit},
-    slice,
+    mem::MaybeUninit,
 };
+
+pub trait ReadPartial {
+    type Error;
+    type ReadPartialFuture<'a>: Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
+    /// Not all requested bytes may be read. This is useful for optimizing reads
+    /// that are not aligned with the block size
+    fn read_partial<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadPartialFuture<'a>;
+}
 
 pub trait Read {
     type Error;
-    type ReadFuture<'a>: Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
+    type ReadFuture<'a>: Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
+    /// All bytes will be read. Otherwise, it errors.
     fn read<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadFuture<'a>;
 }
 
 pub trait Write {
     type Error;
     type WriteFuture<'a>: Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
+    /// The entirety of the buffer will be written, otherwise an error is returned.
     fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a>;
+}
+
+pub trait Seek {
+    fn seek_from_start(&mut self, pos: u32);
 }
 
 // Not sure how to make async functions in a trait with a default
@@ -23,8 +36,8 @@ pub trait Write {
 // in with a better solution?
 
 macro_rules! impl_read_obj {
-    ($err:ty) => {
-        pub async fn read_obj<O>(&mut self) -> Result<O, $err> {
+    ($self:ty) => {
+        pub async fn read_obj<O>(&mut self) -> Result<O, <$self as Read>::Error> {
             let mut response = core::mem::MaybeUninit::<O>::uninit();
             self.read(response.as_bytes_mut()).await?;
             Ok(unsafe { response.assume_init() })
@@ -34,8 +47,8 @@ macro_rules! impl_read_obj {
 pub(crate) use impl_read_obj;
 
 macro_rules! impl_write_obj {
-    ($err:ty) => {
-        pub async fn write_obj<O>(&mut self, obj: &O) -> Result<(), $err> {
+    ($self:ty) => {
+        pub async fn write_obj<O>(&mut self, obj: &O) -> Result<(), <$self as Write>::Error> {
             let ptr = (obj as *const O) as *const u8;
             let bytes = unsafe { core::slice::from_raw_parts(ptr, core::mem::size_of::<O>()) };
             self.write(bytes).await
@@ -44,31 +57,3 @@ macro_rules! impl_write_obj {
 }
 
 pub(crate) use impl_write_obj;
-
-
-pub enum DirectionBuffer<'a> {
-    In(&'a mut [MaybeUninit<u8>]), // read()
-    Out(&'a [u8]), // write()
-}
-
-impl<'a> DirectionBuffer<'a> {
-    pub fn len(&self) -> usize {
-        match self {
-            DirectionBuffer::In(buf) => buf.len(),
-            DirectionBuffer::Out(buf) => buf.len(),
-        }
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.len() == 0
-    }
-
-    pub fn dir(&self) -> Direction {
-        match self {
-            DirectionBuffer::In(_) => Direction::In,
-            DirectionBuffer::Out(_) => Direction::Out,
-        }
-    }
-}
-
-use crate::drivers::usb::Direction;

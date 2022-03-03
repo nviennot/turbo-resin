@@ -1,30 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use core::{mem::{self, MaybeUninit}, cell::{Cell, RefCell}};
-
-use futures::Future;
-use stm32f1xx_hal::{
-    gpio::*,
-    gpio::gpioa::*,
-    rcc::Clocks,
-    prelude::*,
-    rcc::{Enable, Reset},
-    time::Hertz,
-    pac::{self, usb_otg_host::{FS_HCCHAR0, FS_HCINT0, FS_HCINTMSK0, FS_HCTSIZ0}},
-};
+use core::mem::MaybeUninit;
 
 use embassy::{
-    channel::signal::Signal,
-    time::{Duration, Timer, Instant},
+    time::{Duration, Timer},
 };
 
-use bitflags::bitflags;
-use crate::{debug, drivers::clock::delay_ms, util::DirectionBuffer};
-use super::{Channel, EndpointType, Direction, PacketType, ControlPipe, ensure,
+use crate::debug;
+use super::{Channel, EndpointType, Direction, ControlPipe, ensure,
     InterfaceHandler, InterfaceDescriptor, EndpointDescriptor, UsbResult,
     RequestType, Request, MscBlockDevice};
 
-use crate::util::{Read, Write};
+use crate::util::io::{Read, Write};
 
 const USB_MSC_CLASS: u8 = 8;
 const USB_MSC_SCSI_SUBCLASS: u8 = 6;
@@ -98,11 +85,11 @@ impl Msc {
     async fn bot_request<T: 'static>(&mut self, cmd: T, mut buf: DirectionBuffer<'_>) -> UsbResult<()>
       where [(); 16 - core::mem::size_of::<T>()]: {
         let cmd = CommandBlockWrapper::new(Direction::In, buf.len() as u32, cmd);
-        for i in 0..NUM_ATTEMPS {
+        for _ in 0..NUM_ATTEMPS {
             self.data_out.with_data_toggle().write_obj(&cmd).await?;
             if !buf.is_empty() {
                 match &mut buf {
-                    DirectionBuffer::In(buf) => self.data_in.with_data_toggle().read(buf).await?,
+                    DirectionBuffer::In(buf) => self.data_in.with_data_toggle().read(buf).await.map(drop)?,
                     DirectionBuffer::Out(buf) => self.data_out.with_data_toggle().write(buf).await?,
                 }
             }
@@ -142,6 +129,24 @@ impl Msc {
     }
 }
 
+
+pub enum DirectionBuffer<'a> {
+    In(&'a mut [MaybeUninit<u8>]), // read()
+    Out(&'a [u8]), // write()
+}
+
+impl<'a> DirectionBuffer<'a> {
+    pub fn len(&self) -> usize {
+        match self {
+            DirectionBuffer::In(buf) => buf.len(),
+            DirectionBuffer::Out(buf) => buf.len(),
+        }
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.len() == 0
+    }
+}
 
 const CBW_SIG: u32 = 0x43425355; // Spells USBC
 const CSW_SIG: u32 = 0x53425355; // Spells USBS
@@ -186,6 +191,7 @@ pub struct CommandStatusWrapper {
 
 impl CommandStatusWrapper {
     pub fn is_valid(&self) -> bool {
+        self.signature == CSW_SIG &&
         self.tag == CBW_TAG
     }
     pub fn success(&self) -> bool {

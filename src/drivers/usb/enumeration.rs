@@ -1,13 +1,13 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use bitflags::bitflags;
-use crate::{debug, drivers::clock::delay_ms};
+use crate::debug;
 use core::{mem::{self, MaybeUninit}, slice};
 use heapless::Vec;
 
 use super::{ensure, Channel, EndpointType, Direction, PacketType, UsbResult};
 
-use crate::util::{Read,Write};
+use crate::util::io::{Read,Write};
 
 // A regular configuration descriptor is 32 bytes, this is plenty of margin.
 const CONFIGURATION_DESCRIPTOR_BUFFER_SIZE: usize = 256;
@@ -64,7 +64,7 @@ pub async fn enumerate<H: InterfaceHandler>() -> UsbResult<H> {
             let config = consume::<ConfigurationDescriptor>(&mut full_cd_buf)?;
             //debug!("{:#?}", config);
 
-            for interface_index in 0..config.num_interfaces {
+            for _ in 0..config.num_interfaces {
                 let interface = consume::<InterfaceDescriptor>(&mut full_cd_buf)?;
 
                 let endpoints = (0..interface.num_endpoints)

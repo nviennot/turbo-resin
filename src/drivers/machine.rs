@@ -42,7 +42,6 @@ impl Machine {
         let mut gpioe = dp.GPIOE.split();
 
         let mut afio = dp.AFIO.constrain();
-        let clocks = super::clock::get_120mhz_clocks_config();
 
         // Note, we can't use separate functions, because we are consuming (as
         // in taking ownership of) the device peripherals struct, and so we
@@ -54,7 +53,7 @@ impl Machine {
         //--------------------------
 
         // Can't use the HAL. The GD32 is too different.
-        //let clocks = clock::setup_clock_120m_hxtal();
+        let clocks = super::clock::get_120mhz_clocks_config();
         clock::CycleCounter::new(cp.DWT).into_global();
 
         //--------------------------
@@ -66,6 +65,7 @@ impl Machine {
             dp.SPI2,
             &clocks, &mut gpiob.crh
         );
+
 
         //--------------------------
         //  TFT display
@@ -83,6 +83,7 @@ impl Machine {
         );
         display.init();
 
+
         //--------------------------
         //  Touch screen
         //--------------------------
@@ -94,10 +95,9 @@ impl Machine {
         // LCD Panel
         //--------------------------
         let lcd = Lcd::new(
-            gpiod.pd12,
-            gpioa.pa4, gpioa.pa5, gpioa.pa6, gpioa.pa7,
-            dp.SPI1,
-            &clocks, &mut gpioa.crl, &mut gpiod.crh, &mut afio.mapr,
+            p.PD12,
+            p.PA4, p.PA5, p.PA6, p.PA7,
+            p.SPI1, p.DMA1_CH2, p.DMA1_CH3,
         );
 
         //--------------------------
@@ -106,6 +106,8 @@ impl Machine {
         gpioa.pa9.into_pull_up_input(&mut gpioa.crh);
         let usb_host = UsbHost::new(gpioa.pa11, gpioa.pa12,
             dp.OTG_FS_GLOBAL, dp.USB_OTG_HOST, dp.OTG_FS_PWRCLK, &mut gpioa.crh);
+
+
 
         //--------------------------
         //  Stepper motor (Z-axis)

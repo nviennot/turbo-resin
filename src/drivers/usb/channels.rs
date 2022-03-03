@@ -1,28 +1,18 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use core::{marker::PhantomData, mem::{self, MaybeUninit}, cell::UnsafeCell, slice};
+use core::mem::{self, MaybeUninit};
 
-use stm32f1xx_hal::{
-    gpio::*,
-    gpio::gpioa::*,
-    rcc::Clocks,
-    prelude::*,
-    rcc::{Enable, Reset},
-    time::Hertz,
-    pac::{self, usb_otg_host::{FS_HCCHAR0, FS_HCINT0, FS_HCINTMSK0, FS_HCTSIZ0}},
+use stm32f1xx_hal::pac::{
+    self,
+    usb_otg_host::{FS_HCCHAR0, FS_HCINT0, FS_HCINTMSK0, FS_HCTSIZ0},
 };
 
-use crate::util::{Read, Write, impl_read_obj, impl_write_obj};
+use crate::util::io::{Read, Write, impl_read_obj, impl_write_obj};
 use core::future::Future;
-
-
-use embassy::{
-    channel::signal::Signal,
-};
-
+use embassy::channel::signal::Signal;
 use super::UsbResult;
 
-use crate::{drivers::{clock::delay_ms, usb::ensure}, debug};
+use crate::debug;
 
 const OTG_CORE_BASE_ADDR: *mut u8 = 0x5000_0000u32 as *mut u8;
 
@@ -100,7 +90,7 @@ impl Channel {
         let low_speed = false;
         *self.interrupt_context() = ChannelInterruptContext::default();
         unsafe {
-            let (hcchar, hcint, hcintmsk, hctsiz) = self.get_registers();
+            let (hcchar, hcint, hcintmsk, _hctsiz) = self.get_registers();
 
             // Clear old interrupts
             hcint.write(|w| w.bits(0xFFFFFFFF));
@@ -170,7 +160,7 @@ impl Channel {
     }
 
     fn on_ch_interrupt(&mut self) {
-        let (hcchar, hcint_reg, hcintmsk, hctsiz) = self.get_registers();
+        let (_hcchar, hcint_reg, _hcintmsk, _hctsiz) = self.get_registers();
 
         let hcint = hcint_reg.read();
         unsafe { hcint_reg.write(|w| w.bits(hcint.bits())) };
@@ -351,6 +341,14 @@ impl Channel {
 
         loop {
             f(self);
+
+            // If the port is disabled (due to a USB disconnection for example),
+            // make sure we don't wait as the stop_pending_xfer() function won't
+            // trigger a signal (it's been reset).
+            if otg_host().fs_hprt.read().pena().bit_is_clear() {
+                return Err(());
+            }
+
             match self.interrupt_context().event_signal.wait().await {
                 ChannelEvent::Complete => return Ok(()),
                 ChannelEvent::FatalError => return Err(()),
@@ -412,7 +410,7 @@ impl Channel {
 
     fn prepare_channel_xfer(&mut self, packet_type: Option<PacketType>, size: usize, dir: Direction) {
         unsafe {
-            let (hcchar, hcint, hcintmsk, hctsiz) = self.get_registers();
+            let (hcchar, _hcint, _hcintmsk, hctsiz) = self.get_registers();
 
             // Ensure the channel is not being used
             assert!(hcchar.read().chena().bit_is_clear());
@@ -475,10 +473,13 @@ pub struct ChannelAccessor<'b> {
 
 impl<'b> Read for ChannelAccessor<'b> {
     type Error = ();
-    type ReadFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
+    type ReadFuture<'a> where Self: 'a = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a;
 
     fn read<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadFuture<'a> {
-        self.channel.read(self.packet_type, buf)
+        async move {
+            self.channel.read(self.packet_type, buf).await?;
+            Ok(unsafe { MaybeUninit::slice_assume_init_ref(buf) })
+        }
     }
 }
 
@@ -492,8 +493,9 @@ impl<'b> Write for ChannelAccessor<'b> {
 }
 
 impl<'b> ChannelAccessor<'b> {
-    impl_read_obj!(());
-    impl_write_obj!(());
+    // Because async trait with default impl isn't a thing.
+    impl_read_obj!(ChannelAccessor<'b>);
+    impl_write_obj!(ChannelAccessor<'b>);
 }
 
 #[inline(always)]

@@ -1,25 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use core::mem;
-
 use stm32f1xx_hal::{
     gpio::*,
     gpio::gpioa::*,
-    rcc::Clocks,
-    prelude::*,
-    rcc::{Enable, Reset},
-    time::Hertz,
-    pac::{self, usb_otg_host::{FS_HCCHAR0, FS_HCINT0, FS_HCINTMSK0, FS_HCTSIZ0}},
+    pac,
 };
 
 use embassy::{
     channel::signal::Signal,
-    time::{Duration, Timer, Instant},
+    time::{Duration, Timer},
 };
 
-use bitflags::bitflags;
-use crate::{debug, drivers::{clock::delay_ms, usb::Msc}};
-use super::{Channel, EndpointType, Direction, PacketType, enumerate, InterfaceHandler};
+use crate::drivers::clock::delay_ms;
+use crate::debug;
+use super::{Channel, enumerate, InterfaceHandler};
 
 pub type UsbResult<T> = Result<T, ()>;
 
@@ -84,6 +78,7 @@ impl UsbHost {
 
     pub fn init(&self) {
         Self::reset();
+
         // We follow the code from the STM32CubeF1 SDK.
         unsafe {
             // USB_CoreInit() from the SDK
@@ -306,5 +301,4 @@ enum Event {
     PortConnectDetected,
     PortEnabled,
     Disconnected,
-    TxComplete,
 }

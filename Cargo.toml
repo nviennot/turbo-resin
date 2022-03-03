@@ -30,6 +30,9 @@ heapless = "0.7"
 # This is for FAT32
 embedded-sdmmc = { git = "https://github.com/nviennot/embedded-sdmmc-rs.git" }
 
+#[patch."https://github.com/nviennot/embedded-sdmmc-rs.git"]
+#embedded-sdmmc = { path = "/Users/pafy/tmp/embedded-sdmmc-rs" }
+
 #tinyusb-sys = { path = "repos/tinyusb-sys", features = ["host", "msc", "stm32f1"] }
 
 #synopsys-usb-otg = { path = "repos/synopsys-usb-otg", features=["fs"]}

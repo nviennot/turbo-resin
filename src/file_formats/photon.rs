@@ -2,6 +2,50 @@
 
 // Based on https://github.com/sn4k3/UVtools/blob/master/UVtools.Core/FileFormats/PhotonWorkshopFile.cs
 
+use core::mem::MaybeUninit;
+use crate::drivers::lcd::Color;
+use crate::util::io::{Seek, BufReader, ReadPartial};
+
+use crate::consts::io::*;
+
+use embassy::blocking_mutex::raw::NoopRawMutex;
+use embassy::channel::mpsc::{self, Channel, Receiver, Sender};
+
+use alloc::vec::Vec;
+
+impl Layer {
+    pub async fn for_each_pixel<'a, R: ReadPartial + Seek>(
+        &'a self, reader: &'a mut R, mut f: impl FnMut(Color, u16),
+    ) -> Result<(), R::Error> {
+        reader.seek_from_start(self.data_address);
+        let mut buf_reader = BufReader::new(reader, self.data_length as usize);
+
+        let mut buffer: [MaybeUninit::<u8>; FILE_READER_BUFFER_SIZE] = MaybeUninit::uninit_array();
+        let mut color_repeat: Option<(u8, u8)> = None;
+
+        while let Some(data) = buf_reader.next(&mut buffer).await? {
+            for b in data {
+                if let Some((color, repeat)) = color_repeat.take() {
+                    let repeat = ((repeat as u16) << 8) | *b as u16;
+                    f(color, repeat);
+                } else {
+                    let color = b >> 4;
+                    let repeat = b & 0x0F;
+                    if color == 0 || color == 0xF {
+                        color_repeat = Some((color, repeat));
+                        continue;
+                    } else {
+                        f(color, repeat as u16);
+                    }
+               }
+            }
+        }
+
+        Ok(())
+    }
+}
+
+
 #[repr(C, packed)]
 #[derive(Copy, Clone, Debug)]
 pub struct Header {

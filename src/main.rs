@@ -6,11 +6,13 @@
 #![feature(type_alias_impl_trait)]
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_slice)]
 #![feature(generic_const_exprs)]
-#![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code, unused_unsafe)]
 #![feature(generic_associated_types)]
 #![feature(core_intrinsics)]
-//#![feature(associated_type_defaults)]
+#![feature(future_join)]
+#![feature(future_poll_fn)]
+#![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code, unused_unsafe)]
 
 extern crate alloc;
 
@@ -26,13 +28,16 @@ use core::mem::MaybeUninit;
 use lvgl::core::{Lvgl, TouchPad, Display, ObjExt};
 
 use embassy::{
-    time::{Duration, Timer},
+    time::{Instant, Duration, Timer},
     util::Forever,
     executor::InterruptExecutor,
     interrupt::InterruptExt,
     blocking_mutex::CriticalSectionMutex as Mutex,
 };
 use embassy_stm32::{Config, interrupt};
+
+use embedded_sdmmc::Mode;
+
 
 use consts::display::*;
 use drivers::{
@@ -42,9 +47,14 @@ use drivers::{
     zaxis,
     usb::UsbHost, lcd::Lcd,
 };
-use util::TaskRunner;
-use util::SharedWithInterrupt;
 pub(crate) use runtime::debug;
+
+use crate::{
+    drivers::usb::{Msc, UsbResult},
+    util::io::File,
+    util::TaskRunner,
+    util::SharedWithInterrupt,
+};
 
 
 static LAST_TOUCH_EVENT: Mutex<RefCell<Option<TouchEvent>>> = Mutex::new(RefCell::new(None));
@@ -72,11 +82,18 @@ mod high_priority_tasks {
 }
 
 mod medium_priority_tasks {
-    use embedded_sdmmc::Mode;
-
-    use crate::drivers::usb::{Msc, UsbResult};
+    use crate::drivers::{lcd::Color, clock::read_cycles};
 
     use super::*;
+
+    /*
+    #[embassy::task]
+    pub async fn lcd_task(mut lcd_receiver: LcdReceiver<'static>) {
+        loop {
+            lcd_receiver.run_task().await
+        }
+    }
+    */
 
     #[embassy::task]
     pub async fn usb_stack() {
@@ -103,23 +120,17 @@ mod medium_priority_tasks {
                 }
             }).await.map_err(drop)?;
 
-            let mut file = fs.open_file_in_dir(&mut volume, &root, "RESINX~2.PWM", Mode::ReadOnly).await.map_err(drop)?;
-            debug!("File open, size={}", file.length());
+            let mut file = File::new(&mut fs, &mut volume, &root, "RESINX~2.PWM", Mode::ReadOnly).await.map_err(drop)?;
 
             use file_formats::photon::*;
             let layer_definition_offset = {
-                let mut header = MaybeUninit::<Header>::uninit();
-                fs.read(&volume, &mut file, unsafe { core::mem::transmute(header.as_bytes_mut()) } ).await.map_err(drop)?;
-                let header = unsafe { header.assume_init() };
+                let header = file.read_obj::<Header>().await.map_err(drop)?;
                 header.layer_definition_offset
             };
 
-
             let num_layers = {
                 file.seek_from_start(layer_definition_offset)?;
-                let mut header = MaybeUninit::<LayerDefinition>::uninit();
-                fs.read(&volume, &mut file, unsafe { core::mem::transmute(header.as_bytes_mut()) } ).await.map_err(drop)?;
-                let header = unsafe { header.assume_init() };
+                let header = file.read_obj::<LayerDefinition>().await.map_err(drop)?;
                 header.layer_count
             };
 
@@ -127,109 +138,33 @@ mod medium_priority_tasks {
 
             let layers_offset = layer_definition_offset + core::mem::size_of::<LayerDefinition>() as u32;
 
-            let (data_offset, data_size) = {
-                let layer_index = 7;
-                file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32)?;
-                let mut header = MaybeUninit::<Layer>::uninit();
-                fs.read(&volume, &mut file, unsafe { core::mem::transmute(header.as_bytes_mut()) } ).await.map_err(drop)?;
-                let header = unsafe { header.assume_init() };
-                (header.data_address, header.data_length)
-            };
-
-            debug!("Data address={:x}, size={:x}", data_offset, data_size);
+            //let layer_index = 2;
+            let layer_index = 7;
+            file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32)?;
+            let layer = file.read_obj::<Layer>().await.map_err(drop)?;
 
             {
-                file.seek_from_start(data_offset)?;
-
-                const BUF_LEN: usize = 1024;
-                let mut buffer = [0u8; BUF_LEN];
-                let mut data_left = data_size as usize;
-
                 let lcd = unsafe { LCD.steal() };
 
-                lcd.draw_all_black();
-                Timer::after(Duration::from_millis(2*5000)).await;
+                let start_cycles = read_cycles();
+                lcd.draw().set_all_black();
+                let end_cycles = read_cycles();
+                debug!("Black drawing, took {}ms", end_cycles.wrapping_sub(start_cycles)/120_000);
 
-                let mut palette = [0xFF; 16];
-                palette[0] = 0;
-                lcd.set_palette(&palette);
+                let start_cycles = read_cycles();
+                {
+                    let mut lcd_drawing = lcd.draw();
 
-                //lcd.draw_waves(8);
-                lcd.start_draw();
-
-                //let pixels_left = Lcd::ROWS * Lcd::COLS;
-                let mut x = 0;
-                let mut y = 0;
-                let mut long_color_repeat: Option<(u8, u8)> = None;
-
-
-
-                while data_left > 0 {
-                    let buf = &mut buffer[0..data_left.min(BUF_LEN)];
-                    data_left -= buf.len();
-                    fs.read(&volume, &mut file, buf).await.map_err(drop)?;
-
-                    // Some sort of RLE encoding
-                    for b in buf {
-                        let (color, repeat) = if let Some((color, repeat)) = long_color_repeat.take() {
-                            let repeat = ((repeat as u16) << 8) | *b as u16;
-                            (color, repeat)
-                        } else {
-                            let color = *b >> 4;
-                            let repeat = *b & 0x0F;
-                            if color == 0 || color == 0xF {
-                                long_color_repeat = Some((color, repeat));
-                                continue;
-                            } else {
-                                (color, repeat as u16)
-                            }
-                        };
-
-                        for _ in 0..repeat {
-                            let tile = ((3*x / Lcd::COLS)+1) + ((2*y / Lcd::ROWS)*3);
-                            let color = if color > 0 { tile as u8 } else { color };
-
-                            lcd.push_pixel(color);
-                            x += 1;
-                            if x == Lcd::COLS {
-                                x = 0;
-                                y += 1;
-                            }
-                        }
-
-
-                    }
-
+                    layer.for_each_pixel(&mut file, |color, repeat| {
+                        lcd_drawing.push_pixels(color, repeat as usize);
+                    }).await.map_err(drop)?;
                 }
+                let end_cycles = read_cycles();
 
-                lcd.end_draw();
-                debug!("Done drawing");
-                Timer::after(Duration::from_millis(2*1000)).await;
-
-                loop {
-                    for i in 1..8 {
-                        for j in 1..7 {
-                            palette[j] = if i > j { 0xff } else { 0x00 };
-                        }
-
-                        lcd.set_palette(&palette);
-
-                        if i == 1 {
-                            Timer::after(Duration::from_millis(2*1000)).await;
-                        }
-
-                        Timer::after(Duration::from_millis(2*200)).await;
-                    }
-                    Timer::after(Duration::from_millis(2*1000)).await;
-                }
-
+                debug!("Print drawing, took {}ms", end_cycles.wrapping_sub(start_cycles)/120_000);
             }
 
-
-
-
             Timer::after(Duration::from_secs(10000)).await;
-
             Ok(())
         }
 
@@ -288,7 +223,7 @@ mod low_priority_tasks {
         display.load_screen(&mut ui);
 
         loop {
-            ui.context().as_mut().unwrap().refresh();
+            //ui.context().as_mut().unwrap().refresh();
 
             LAST_TOUCH_EVENT.lock(|e| {
                 *lvgl_input_device.state() = touch_screen::into_lvgl_event(&e.borrow());
@@ -335,11 +270,13 @@ fn main() -> ! {
         machine.z_bottom_sensor,
     ));
 
-    LCD.put(machine.lcd);
+    //let lcd_channel = LcdChannel::new();
 
     let (lvgl, display) = lvgl_init(machine.display);
 
     USB_HOST.put(machine.usb_host);
+
+    TASK_RUNNER.put(TaskRunner::new());
 
     //let mut lcd = machine.lcd;
     //lcd.draw_waves(16);
@@ -349,7 +286,6 @@ fn main() -> ! {
     {
         let irq: interrupt::TIM7 = unsafe { ::core::mem::transmute(()) };
         irq.set_priority(interrupt::Priority::P4);
-        irq.unpend();
         irq.enable();
     }
 
@@ -357,12 +293,12 @@ fn main() -> ! {
     {
         let irq: interrupt::OTG_FS = unsafe { ::core::mem::transmute(()) };
         irq.set_priority(interrupt::Priority::P5);
-        //irq.unpend();
         irq.enable();
     }
 
     // Medium priority executor. It interrupts the low priority tasks (UI rendering)
     {
+
         let lvgl_ticks = lvgl.ticks();
         let touch_screen = machine.touch_screen;
         let irq = interrupt::take!(CAN1_RX0);
@@ -374,6 +310,7 @@ fn main() -> ! {
             spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
             spawner.spawn(medium_priority_tasks::main_task()).unwrap();
             spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
+            //spawner.spawn(medium_priority_tasks::lcd_task(lcd_receiver)).unwrap();
         });
     }
 

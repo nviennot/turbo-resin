@@ -71,7 +71,7 @@ impl Display {
 
         unsafe {
             // Enables the EXMC module
-            (*pac::RCC::ptr()).ahbenr.modify(|_,w| w.bits(1 << 8));
+            (*pac::RCC::ptr()).ahbenr.modify(|r,w| w.bits(r.bits() | 1 << 8));
         }
 
         // PD4: EXMC_NOE: Output Enable

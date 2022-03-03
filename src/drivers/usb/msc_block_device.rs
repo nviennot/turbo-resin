@@ -19,7 +19,7 @@ impl BlockDevice for MscBlockDevice {
     type ReadFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
     type WriteFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
 
-    fn read<'a>(&'a self, blocks: &'a mut [Block], start_block_idx: BlockIdx, reason: &str) -> Self::ReadFuture<'a> {
+    fn read<'a>(&'a self, blocks: &'a mut [Block], start_block_idx: BlockIdx, _reason: &str) -> Self::ReadFuture<'a> {
         async move {
             let dst = unsafe { core::slice::from_raw_parts_mut(
                 blocks.as_mut_ptr() as *mut _,
