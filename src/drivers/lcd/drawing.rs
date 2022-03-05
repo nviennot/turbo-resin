@@ -63,14 +63,16 @@ impl<'a> Drawing<'a> {
         }
         if self.pending_pixels_cnt == 3 {
             repeat -= 1;
-            self.lcd.draw_raw((self.pending_pixels << 4) | color, 1);
+            self.lcd.draw_raw((self.pending_pixels << 4) | color);
             self.pending_pixels_cnt = 0;
             if repeat == 0 { return }
         }
 
         // Now we flush pixels 4 by 4
         let packed_pixels = (color << 12) | (color << 8) | (color << 4) | color;
-        self.lcd.draw_raw(packed_pixels, repeat/4);
+        for _ in 0..repeat/4 {
+            self.lcd.draw_raw(packed_pixels);
+        }
         self.pending_pixels = packed_pixels;
         self.pending_pixels_cnt = (repeat % 4) as u8;
     }

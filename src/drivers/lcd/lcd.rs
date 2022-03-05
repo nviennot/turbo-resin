@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use embassy_stm32::exti::ExtiInput;
+use embassy_stm32::pac::SPI1;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
 use embassy_stm32::rcc::Clocks;
@@ -67,22 +68,21 @@ impl Lcd {
         self.cmd(Command::StartDrawing, None, None);
     }
 
-    pub fn draw_raw(&mut self, packed_pixels: u16, count: usize) {
+    #[inline(always)]
+    pub fn draw_raw(&mut self, packed_pixels: u16) {
         // We use this small piece of code, it's much faster than the SPI API.
         // Note that the SPI is correctly configured (16bits frames) due to the
         // previous commands.
-        let regs = embassy_stm32::pac::SPI1;
-        let ptr = regs.dr().ptr() as *mut u16;
-        for _ in 0..count {
-            unsafe {
-                while !regs.sr().read().txe() {}
-                ptr.write_volatile(packed_pixels);
-            }
+        unsafe {
+            while !SPI1.sr().read().txe() {}
+            SPI1.dr().write(|w| w.set_dr(packed_pixels));
         }
     }
 
     pub fn stop_drawing_raw(&mut self) {
-        delay_us(1);
+        unsafe {
+            while SPI1.sr().read().bsy() {}
+        }
         self.cs.set_high();
     }
 
