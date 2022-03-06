@@ -42,6 +42,9 @@ for (name, size, vma, lma, t) in sections:
     # a section can belong in two regions, like .data being both in flash and
     # RAM (non-zero global variables).
 
+    if size == 0:
+        continue
+
     for region in regions:
         if in_region(region, vma) or in_region(region, lma):
             region['used'] += size
