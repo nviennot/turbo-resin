@@ -127,6 +127,7 @@ impl MoveZ {
 
     // Called before every frame rendering.
     pub fn refresh(&mut self) {
+        // TODO check if the state has changed, this is burning a lot of CPU.
         let c = self.task_runner.is_task_cancelled();
         // We could use get/set state instead?
         match self.task_runner.get_current_task().cloned() {

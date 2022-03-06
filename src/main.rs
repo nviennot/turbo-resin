@@ -223,7 +223,7 @@ mod low_priority_tasks {
         display.load_screen(&mut ui);
 
         loop {
-            //ui.context().as_mut().unwrap().refresh();
+            ui.context().as_mut().unwrap().refresh();
 
             LAST_TOUCH_EVENT.lock(|e| {
                 *lvgl_input_device.state() = touch_screen::into_lvgl_event(&e.borrow());

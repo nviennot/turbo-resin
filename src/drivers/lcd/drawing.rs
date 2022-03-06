@@ -45,6 +45,7 @@ impl<'a> Drawing<'a> {
 
     pub fn push_pixels(&mut self, color: Color, mut repeat: usize) {
         let color = color as u16;
+
         if repeat == 0 { return }
 
         // First, flush any packed pending pixels.
@@ -52,13 +53,13 @@ impl<'a> Drawing<'a> {
         if self.pending_pixels_cnt == 1 {
             repeat -= 1;
             self.pending_pixels = (self.pending_pixels << 4) | color;
-            self.pending_pixels_cnt = 2;
+            self.pending_pixels_cnt += 1;
             if repeat == 0 { return }
         }
         if self.pending_pixels_cnt == 2 {
             repeat -= 1;
             self.pending_pixels = (self.pending_pixels << 4) | color;
-            self.pending_pixels_cnt = 3;
+            self.pending_pixels_cnt += 1;
             if repeat == 0 { return }
         }
         if self.pending_pixels_cnt == 3 {
@@ -68,11 +69,15 @@ impl<'a> Drawing<'a> {
             if repeat == 0 { return }
         }
 
-        // Now we flush pixels 4 by 4
+        // 0x000A turns into 0xAAAA
         let packed_pixels = (color << 12) | (color << 8) | (color << 4) | color;
+
+        // Now we flush pixels 4 by 4
         for _ in 0..repeat/4 {
             self.lcd.draw_raw(packed_pixels);
         }
+
+        // We may have some leftovers, save them for later
         self.pending_pixels = packed_pixels;
         self.pending_pixels_cnt = (repeat % 4) as u8;
     }
@@ -80,6 +85,10 @@ impl<'a> Drawing<'a> {
 
 impl<'a> Drop for Drawing<'a> {
     fn drop(&mut self) {
+        // If there's pending pixels, oh well.
+        if self.pending_pixels_cnt > 0 {
+            crate::debug!("WARN: leftover pixels")
+        }
         self.lcd.stop_drawing_raw();
     }
 }
