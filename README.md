@@ -19,121 +19,34 @@ Drivers:
 * [X] Control the stepper motor
 * [X] Read/write to external Flash
 * [ ] Read/write to external EEPROM
-* [X] Drive the LCD panel (anti-aliasing support confirmed!)
-* [ ] Read from USB flash drive
+* [X] Drive the LCD panel
+* [X] Read from USB flash drive
 * [ ] Control the UV light
-* [ ] Z=0 detection
+* [X] Z=0 detection
+* [ ] Being able to flash firmware via USB
 
 Printing features:
-* [ ] Better Z-Axis motion control for faster prints with fast deceleration
-* [ ] Z=0 calibration
-* [ ] Read .pwma files from USB flash drive
+* [X] Better Z-Axis motion control for faster prints with fast deceleration
+* [X] Z=0 calibration
+* [X] Read .pwma files from USB flash drive
 * [ ] Support multiple exposure (like RERF but configurable)
 * [ ] Print algorithm
 * [ ] Support more file formats to support various slicers
-* [ ] Add support for other printers (help needed!)
+* [ ] Add support for other printers
 * [ ] Build-plate force feedback for speed optimization. Following [the work of Jan Mrázek](https://blog.honzamrazek.cz/2022/01/prints-not-sticking-to-the-build-plate-layer-separation-rough-surface-on-a-resin-printer-resin-viscosity-the-common-denominator/)
 * [ ] Over-expose structural region of the print to add strength while letting
     edges be normally exposed
 
-## Help needed to add support for other printers
+## Support for other printers
 
-Right now the firmware supports only the Anycubic Photon Mono 4K.
-To add support for other printers, I need some help in identifying the circuit
-boards. If you have a printer that isn't marked as identified below, it would be
-of great help if you could open your printer, and identify your controller
-board. It may be one of the generic Chitu boards listed here on their website.
-See [here](https://shop.chitusystems.com/product-category/controller-board/) and
-[here](https://shop.chitusystems.com/product-category/nocategory/?orderby=price-desc&paged=1&count=36)
-There should be a version number printed on the board. You can find the match.
+The first set of printers we'd like to support are the AnyCubic, Phrozen,
+Elegoo, and Creality printers.
 
-If your controller board is a bit exotic (like in the AnyCubic), send high
-resolution photos. Join [our discord](https://discord.gg/9HSMNYxPAM).
+## Sponsors
 
-Identified printers:
+* [Elliot from Tiny Labs](https://github.com/tinylabs)
 
-* [ ] AnyCubic Photon
-* [ ] AnyCubic Photon Mono
-* [X] AnyCubic Photon Mono 4K
-* [ ] AnyCubic Photon Mono SE
-* [ ] AnyCubic Photon Mono SQ
-* [ ] AnyCubic Photon Mono X
-* [ ] AnyCubic Photon Mono X 6K
-* [ ] AnyCubic Photon S
-* [ ] AnyCubic Photon Ultra
-* [ ] AnyCubic Photon X
-* [ ] AnyCubic Photon Zero
-* [ ] Creality HALOT-MAX CL-133
-* [ ] Creality HALOT-ONE CL-60
-* [ ] Creality HALOT-SKY CL-89
-* [ ] Creality LD-002H
-* [ ] Creality LD-002R
-* [ ] Creality LD-006
-* [ ] EPAX E10 5K
-* [ ] EPAX E10 Mono
-* [ ] EPAX E6 Mono
-* [ ] EPAX X1
-* [ ] EPAX X10
-* [ ] EPAX X10 4K Mono
-* [ ] EPAX X10 5K
-* [ ] EPAX X133 4K Mono
-* [ ] EPAX X156 4K Color
-* [ ] EPAX X1K 2K Mono
-* [ ] Elegoo Mars
-* [ ] Elegoo Mars 2 Pro
-* [ ] Elegoo Mars 3
-* [ ] Elegoo Mars C
-* [ ] Elegoo Saturn
-* [ ] FlashForge Explorer MAX
-* [ ] FlashForge Focus 13.3
-* [ ] FlashForge Focus 8.9
-* [ ] FlashForge Foto 13.3
-* [ ] FlashForge Foto 6.0
-* [ ] FlashForge Foto 8.9
-* [ ] FlashForge Hunter
-* [ ] Longer Orange 10
-* [ ] Longer Orange 120
-* [ ] Longer Orange 30
-* [ ] Longer Orange 4K
-* [ ] Nova3D Bene4
-* [ ] Nova3D Bene4 Mono
-* [ ] Nova3D Bene5
-* [ ] Nova3D Elfin
-* [ ] Nova3D Elfin2
-* [ ] Nova3D Elfin2 Mono SE
-* [ ] Nova3D Elfin3 Mini
-* [ ] Nova3D Whale
-* [ ] Nova3D Whale2
-* [ ] Peopoly Phenom
-* [ ] Peopoly Phenom L
-* [ ] Peopoly Phenom Noir
-* [ ] Peopoly Phenom XXL
-* [ ] Phrozen Shuffle
-* [ ] Phrozen Shuffle 16
-* [ ] Phrozen Shuffle 4K
-* [ ] Phrozen Shuffle Lite
-* [ ] Phrozen Shuffle XL
-* [ ] Phrozen Shuffle XL Lite
-* [ ] Phrozen Sonic
-* [ ] Phrozen Sonic 4K
-* [ ] Phrozen Sonic Mega 8K
-* [ ] Phrozen Sonic Mighty 4K
-* [ ] Phrozen Sonic Mini
-* [ ] Phrozen Sonic Mini 4K
-* [ ] Phrozen Sonic Mini 8K
-* [ ] Phrozen Transform
-* [ ] QIDI I-Box Mono
-* [ ] QIDI S-Box
-* [ ] QIDI Shadow5.5
-* [ ] QIDI Shadow6.0 Pro
-* [ ] Uniz IBEE
-* [ ] Voxelab Ceres 8.9
-* [ ] Voxelab Polaris 5.5
-* [ ] Voxelab Proxima 6
-* [ ] Wanhao CGR Mini Mono
-* [ ] Wanhao CGR Mono
-* [ ] Wanhao D7
-* [ ] Wanhao D8
+Thank you!
 
 ## Flashing the firmware
 

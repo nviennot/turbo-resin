@@ -136,32 +136,34 @@ mod medium_priority_tasks {
 
             debug!("Num layers: {}", num_layers);
 
-            let layers_offset = layer_definition_offset + core::mem::size_of::<LayerDefinition>() as u32;
 
-            //let layer_index = 2;
-            let layer_index = 7;
-            file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32)?;
-            let layer = file.read_obj::<Layer>().await.map_err(drop)?;
-
-            {
                 let lcd = unsafe { LCD.steal() };
-
                 let start_cycles = read_cycles();
                 lcd.draw().set_all_black();
-                let end_cycles = read_cycles();
-                debug!("Black drawing, took {}ms", end_cycles.wrapping_sub(start_cycles)/120_000);
 
-                let start_cycles = read_cycles();
+            //let layer_index = 2;
+            for layer_index in 0..num_layers {
+                let layers_offset = layer_definition_offset + core::mem::size_of::<LayerDefinition>() as u32;
+                file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32)?;
+                let layer = file.read_obj::<Layer>().await.map_err(drop)?;
+
                 {
-                    let mut lcd_drawing = lcd.draw();
+                    let lcd = unsafe { LCD.steal() };
 
-                    layer.for_each_pixel(&mut file, |color, repeat| {
-                        lcd_drawing.push_pixels(color, repeat as usize);
-                    }).await.map_err(drop)?;
+
+                    let start_cycles = read_cycles();
+                    {
+                        let mut lcd_drawing = lcd.draw();
+
+                        layer.for_each_pixel(&mut file, |color, repeat| {
+                            lcd_drawing.push_pixels(color, repeat as usize);
+                        }).await.map_err(drop)?;
+                    }
+                    let end_cycles = read_cycles();
+
+                    debug!("Print drawing, took {}ms", end_cycles.wrapping_sub(start_cycles)/120_000);
                 }
-                let end_cycles = read_cycles();
 
-                debug!("Print drawing, took {}ms", end_cycles.wrapping_sub(start_cycles)/120_000);
             }
 
             Timer::after(Duration::from_secs(10000)).await;
