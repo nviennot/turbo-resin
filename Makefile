@@ -28,6 +28,10 @@ start_jlink_rtt:
 start_probe_run_rtt:
 	probe-run --chip STM32F107RC --no-flash ${TARGET_ELF}
 
+misc/orig-firmware.bin:
+	@echo Dump your original firmare, and place it here: $@
+	@exit 1
+
 misc/orig-firmware.elf: misc/orig-firmware.bin
 	arm-none-eabi-objcopy -I binary -O elf32-little --rename-section .data=.text --change-address 0x08000000 $< $@
 
