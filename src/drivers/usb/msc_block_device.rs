@@ -16,8 +16,8 @@ pub struct MscBlockDevice {
 impl BlockDevice for MscBlockDevice {
     type Error = ();
 
-    type ReadFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
-    type WriteFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
+    type ReadFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
+    type WriteFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
     fn read<'a>(&'a self, blocks: &'a mut [Block], start_block_idx: BlockIdx, _reason: &str) -> Self::ReadFuture<'a> {
         async move {

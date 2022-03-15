@@ -277,6 +277,8 @@ fn main() -> ! {
     let (lvgl, display) = lvgl_init(machine.display);
 
     USB_HOST.put(machine.usb_host);
+    let lcd = LCD.put(machine.lcd);
+    debug!("FPGA version: {:x}", lcd.get_version());
 
     TASK_RUNNER.put(TaskRunner::new());
 
@@ -312,6 +314,7 @@ fn main() -> ! {
             spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
             spawner.spawn(medium_priority_tasks::main_task()).unwrap();
             spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
+
             //spawner.spawn(medium_priority_tasks::lcd_task(lcd_receiver)).unwrap();
         });
     }

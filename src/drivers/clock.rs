@@ -107,8 +107,8 @@ pub fn get_120mhz_clocks_config() -> Clocks {
         _pclk1: 60.mhz().into(),
         _pclk2: 120.mhz().into(),
 
-        _ppre1: 0, // TODO Not sure what's that is used for
-        _ppre2: 0, // TODO Not sure what's that is used for
+        _ppre1: 2, // These are the timer multipliers
+        _ppre2: 1,
 
         _sysclk: 120.mhz().into(),
         _adcclk: 30.mhz().into(),

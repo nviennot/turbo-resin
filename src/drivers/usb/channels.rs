@@ -473,7 +473,7 @@ pub struct ChannelAccessor<'b> {
 
 impl<'b> Read for ChannelAccessor<'b> {
     type Error = ();
-    type ReadFuture<'a> where Self: 'a = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a;
+    type ReadFuture<'a> = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
 
     fn read<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadFuture<'a> {
         async move {
@@ -485,7 +485,7 @@ impl<'b> Read for ChannelAccessor<'b> {
 
 impl<'b> Write for ChannelAccessor<'b> {
     type Error = ();
-    type WriteFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
+    type WriteFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
     fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
         self.channel.write(self.packet_type, buf)

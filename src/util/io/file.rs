@@ -41,7 +41,7 @@ impl<'b, D: BlockDevice, T: TimeSource> File<'b, D, T> {
 
 impl<'b, D: BlockDevice, T: TimeSource> Read for File<'b, D, T> {
     type Error = Error<D::Error>;
-    type ReadFuture<'a> where Self: 'a = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a;
+    type ReadFuture<'a> = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
 
     fn read<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadFuture<'a> {
         async move {
@@ -63,7 +63,7 @@ impl<'b, D: BlockDevice, T: TimeSource> Read for File<'b, D, T> {
 
 impl<'b, D: BlockDevice, T: TimeSource> ReadPartial for File<'b, D, T> {
     type Error = Error<D::Error>;
-    type ReadPartialFuture<'a> where Self: 'a = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a;
+    type ReadPartialFuture<'a> = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
 
     fn read_partial<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadPartialFuture<'a> {
         async move {
@@ -77,7 +77,7 @@ impl<'b, D: BlockDevice, T: TimeSource> ReadPartial for File<'b, D, T> {
 
 impl<'b, D: BlockDevice, T: TimeSource> Write for File<'b, D, T> {
     type Error = Error<D::Error>;
-    type WriteFuture<'a> where Self: 'a = impl Future<Output = Result<(), Self::Error>> + 'a;
+    type WriteFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
     fn write<'a>(&'a mut self, mut buf: &'a [u8]) -> Self::WriteFuture<'a> {
         async move {

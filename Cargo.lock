@@ -473,7 +473,7 @@ dependencies = [
  "embassy-hal-common",
  "embassy-macros",
  "embedded-hal 0.2.7",
- "embedded-hal 1.0.0-alpha.6",
+ "embedded-hal 1.0.0-alpha.7",
  "embedded-hal-async",
  "futures",
  "nb 1.0.0",
@@ -530,8 +530,8 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal"
-version = "1.0.0-alpha.6"
-source = "git+https://github.com/embassy-rs/embedded-hal?branch=embassy#1fa64a1d2f9cc1a1ae632dbfcc4064a9f6504a3f"
+version = "1.0.0-alpha.7"
+source = "git+https://github.com/embassy-rs/embedded-hal?branch=embassy2#3d58bc1ac8aa3ff9c841585cdd341e4406340457"
 dependencies = [
  "nb 1.0.0",
 ]
@@ -539,9 +539,9 @@ dependencies = [
 [[package]]
 name = "embedded-hal-async"
 version = "0.0.1"
-source = "git+https://github.com/embassy-rs/embedded-hal?branch=embassy#1fa64a1d2f9cc1a1ae632dbfcc4064a9f6504a3f"
+source = "git+https://github.com/embassy-rs/embedded-hal?branch=embassy2#3d58bc1ac8aa3ff9c841585cdd341e4406340457"
 dependencies = [
- "embedded-hal 1.0.0-alpha.6",
+ "embedded-hal 1.0.0-alpha.7",
 ]
 
 [[package]]
