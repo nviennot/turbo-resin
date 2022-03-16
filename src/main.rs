@@ -16,11 +16,15 @@
 
 extern crate alloc;
 
+#[macro_use]
+extern crate log;
+
 mod drivers;
 mod consts;
 mod ui;
 mod util;
 mod file_formats;
+mod logging;
 
 use core::cell::RefCell;
 use core::mem::MaybeUninit;
@@ -47,7 +51,6 @@ use drivers::{
     zaxis,
     usb::UsbHost, lcd::Lcd,
 };
-pub(crate) use runtime::debug;
 
 use crate::{
     drivers::usb::{Msc, UsbResult},
@@ -250,7 +253,7 @@ fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>) {
 }
 
 fn main() -> ! {
-    rtt_target::rtt_init_print!(NoBlockSkip, 10240);
+    logging::init_logging();
 
     let machine = {
         let p = {
@@ -347,11 +350,4 @@ pub mod runtime {
         debug!("{}", info);
         loop {}
     }
-
-    macro_rules! debug {
-        ($($tt:tt)*) => {
-            rtt_target::rprintln!($($tt)*)
-        }
-    }
-    pub(crate) use debug;
 }

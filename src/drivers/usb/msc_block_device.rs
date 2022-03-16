@@ -4,7 +4,6 @@ use core::cell::RefCell;
 use core::future::Future;
 use core::mem;
 use crate::drivers::usb::Msc;
-use crate::runtime::debug;
 
 use super::UsbResult;
 

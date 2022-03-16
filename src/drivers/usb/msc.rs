@@ -6,7 +6,6 @@ use embassy::{
     time::{Duration, Timer},
 };
 
-use crate::debug;
 use super::{Channel, EndpointType, Direction, ControlPipe, ensure,
     InterfaceHandler, InterfaceDescriptor, EndpointDescriptor, UsbResult,
     RequestType, Request, MscBlockDevice};

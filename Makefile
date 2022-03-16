@@ -1,20 +1,35 @@
-.PHONY: build run attach start_opencd start_jlink start_jlink_rtt restore_rom
-
 #OPENOCD_INTERFACE ?= misc/openocd-jlink.cfg
 OPENOCD_INTERFACE ?= misc/openocd-stlink.cfg
 
-TARGET_ELF ?= target/thumbv7em-none-eabihf/release/app
+BUILD ?= debug
+TARGET_ELF ?= target/thumbv7em-none-eabihf/$(BUILD)/app
+
+BUILD_FLAGS ?=
+ifeq ($(BUILD),release)
+	BUILD_FLAGS += --release
+endif
+
+CARGO ?= $(HOME)/.cargo/bin/cargo
+ifeq (,$(wildcard $(CARGO)))
+	CARGO := cargo
+endif
+
+.PHONY: build run attach clean start_openocd start_jlink \
+	start_jlink_rtt start_probe_run_rtt restore_rom
 
 build:
-	@# We do build --release first, it shows compile error messages (objdump doesn't)
-	cargo build --release
-	cargo objdump -q --release -- -h | ./misc/rom_stats.py
+	@# We do build first, it shows compile error messages (objdump doesn't)
+	$(CARGO) build $(BUILD_FLAGS)
+	$(CARGO) objdump -q $(BUILD_FLAGS) -- -h | ./misc/rom_stats.py
 
 run: build
-	cargo run --release -q
+	$(CARGO) run $(BUILD_FLAGS) -q
 
 attach:
 	arm-none-eabi-gdb -q -x gdb/attach.gdb ${TARGET_ELF}
+
+clean:
+	$(CARGO) clean
 
 start_openocd:
 	openocd -f ${OPENOCD_INTERFACE} -f target/stm32f1x.cfg

@@ -31,7 +31,7 @@ impl<'b, D: BlockDevice, T: TimeSource> File<'b, D, T> {
         mode: Mode,
     ) -> Result<File<'b, D, T>, Error<D::Error>> {
         let inner = fs.open_file_in_dir(volume, dir, name, mode).await?;
-        crate::debug!("File open, size={}", inner.length());
+        debug!("File open, size={}", inner.length());
         Ok(Self { inner, fs, volume })
     }
 

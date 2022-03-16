@@ -12,8 +12,6 @@ use core::future::Future;
 use embassy::channel::signal::Signal;
 use super::UsbResult;
 
-use crate::debug;
-
 const OTG_CORE_BASE_ADDR: *mut u8 = 0x5000_0000u32 as *mut u8;
 
 const NUM_CHANNELS: usize = 8;

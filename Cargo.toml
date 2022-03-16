@@ -6,48 +6,29 @@ name = "app"
 version = "0.1.0"
 
 [dependencies]
+log = { version = "0.4", features = ["max_level_debug", "release_max_level_off"] }
+futures = { version = "0.3", default-features = false }
 embedded-hal = "0.2.3"
 cortex-m = "0.7"
 cortex-m-rt = "0.7"
 rtt-target = { version = "0.3", features = ["cortex-m"]}
 
-#stm32f1 = { git = "https://github.com/nviennot/stm32f1.git", features = ["stm32f107"]}
+embassy = { path = "embassy/embassy", features = ["log"] }
+embassy-stm32 = { path = "embassy/embassy-stm32", features= ["nightly", "stm32f107rc", "unstable-pac", "time-driver-tim3", "exti"] }
 stm32f1xx-hal = { git = "https://github.com/nviennot/stm32f1xx-hal.git", default-features = false, features = ["stm32f107", "medium"]}
 gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", features = ["gd32f307"] } # This one is for the clock register definitions.
+
 spi-memory = "0.2" # For the external flash access. Will be useful when we do firmware updates
+
 embedded-graphics = "0.7"
 embedded-graphics-core = "0.3"
-nb = "1"
 lvgl = { git = "https://github.com/nviennot/lvgl-rs.git", features =["logger", "lvgl_alloc"] }
-futures = { version = "0.3", default-features = false }
 
-#usb-device = "0.2"
-embassy = { path = "embassy/embassy" }
-embassy-stm32 = { path = "embassy/embassy-stm32", features= ["nightly", "stm32f107rc", "unstable-pac", "time-driver-tim3", "exti"] }
 bitflags = "1.3"
 heapless = "0.7"
 
 # This is for FAT32
 embedded-sdmmc = { git = "https://github.com/nviennot/embedded-sdmmc-rs.git" }
-
-#[patch."https://github.com/nviennot/embedded-sdmmc-rs.git"]
-#embedded-sdmmc = { path = "/Users/pafy/tmp/embedded-sdmmc-rs" }
-
-#tinyusb-sys = { path = "repos/tinyusb-sys", features = ["host", "msc", "stm32f1"] }
-
-#synopsys-usb-otg = { path = "repos/synopsys-usb-otg", features=["fs"]}
-
-#arrayvec = {version = "0.7", default-features = false }
-#cty = "0.2"
-#embedded-time = "0.12"
-#fugit = "0.3"
-
-#[patch."https://github.com/nviennot/stm32f1xx-hal.git"]
-#stm32f1xx-hal = { path = "repos/stm32f1xx-hal" }
-
-# uncomment this for lvgl dev
-# [patch."https://github.com/nviennot/lvgl-rs.git"]
-# lvgl = { path = "repos/lvgl-rs/lvgl" }
 
 # this lets you use `cargo fix`!
 [[bin]]
@@ -55,8 +36,26 @@ name = "app"
 test = false
 bench = false
 
+[profile.dev]
+opt-level = 'z'
+
 [profile.release]
-#codegen-units = 1 # better optimizations
-debug = true # symbols are nice and they don't increase the size on Flash
-#lto = true # better optimizations
-opt-level = "z"
+codegen-units = 1
+debug = 2
+debug-assertions = false
+incremental = false
+lto = 'fat'
+opt-level = 'z'
+overflow-checks = false
+
+
+# uncomment for dev on these:
+
+#[patch."https://github.com/nviennot/embedded-sdmmc-rs.git"]
+#embedded-sdmmc = { path = "repos/embedded-sdmmc-rs" }
+
+#[patch."https://github.com/nviennot/stm32f1xx-hal.git"]
+#stm32f1xx-hal = { path = "repos/stm32f1xx-hal" }
+
+#[patch."https://github.com/nviennot/lvgl-rs.git"]
+#lvgl = { path = "repos/lvgl-rs/lvgl" }

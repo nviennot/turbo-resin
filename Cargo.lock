@@ -52,8 +52,8 @@ dependencies = [
  "futures",
  "gd32f3",
  "heapless",
+ "log",
  "lvgl",
- "nb 1.0.0",
  "rtt-target",
  "spi-memory",
  "stm32f1xx-hal",
@@ -435,6 +435,7 @@ dependencies = [
  "embedded-hal-async",
  "futures",
  "heapless",
+ "log",
  "pin-project",
 ]
 

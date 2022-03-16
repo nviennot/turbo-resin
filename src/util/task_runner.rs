@@ -73,10 +73,10 @@ impl TaskRunner<Task> {
             self.cancelled.store(false, Ordering::Release);
 
             let task = self.task_signal.wait().await;
-            crate::debug!("Executing task: {:?}", task);
+            debug!("Executing task: {:?}", task);
             self.current_task = Some(task);
             self.current_task.as_ref().unwrap().run(&self, zaxis).await;
-            crate::debug!("Done executing task");
+            debug!("Done executing task");
         }
     }
 }

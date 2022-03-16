@@ -12,7 +12,6 @@ use embassy::{
 };
 
 use crate::drivers::clock::delay_ms;
-use crate::debug;
 use super::{Channel, enumerate, InterfaceHandler};
 
 pub type UsbResult<T> = Result<T, ()>;

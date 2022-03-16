@@ -87,7 +87,7 @@ impl<'a> Drop for Drawing<'a> {
     fn drop(&mut self) {
         // If there's pending pixels, oh well.
         if self.pending_pixels_cnt > 0 {
-            crate::debug!("WARN: leftover pixels")
+            debug!("WARN: leftover pixels")
         }
         self.lcd.stop_drawing_raw();
     }
