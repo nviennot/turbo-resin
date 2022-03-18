@@ -261,7 +261,7 @@ use embedded_graphics::{
     primitives::Rectangle,
 };
 
-use super::clock::delay_ms;
+use super::gd32f307_clock::delay_ms;
 
 impl DrawTarget for Display {
     type Color = Rgb565;

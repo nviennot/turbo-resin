@@ -11,7 +11,7 @@ use embassy::{
     time::{Duration, Timer},
 };
 
-use crate::drivers::clock::delay_ms;
+use crate::drivers::gd32f307_clock::delay_ms;
 use super::{Channel, enumerate, InterfaceHandler};
 
 pub type UsbResult<T> = Result<T, ()>;

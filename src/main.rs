@@ -85,7 +85,7 @@ mod high_priority_tasks {
 }
 
 mod medium_priority_tasks {
-    use crate::drivers::{lcd::Color, clock::read_cycles};
+    use crate::drivers::{lcd::Color, read_cycles};
 
     use super::*;
 
@@ -258,8 +258,8 @@ fn main() -> ! {
     let machine = {
         let p = {
             // We are doing the clock init here because of the gigadevice differences.
-            let clk = crate::drivers::clock::setup_clock_120m_hxtal();
-            let clk = crate::drivers::clock::embassy_stm32_clock_from(&clk);
+            let clk = crate::drivers::gd32f307_clock::setup_clock_120m_hxtal();
+            let clk = crate::drivers::gd32f307_clock::embassy_stm32_clock_from(&clk);
             unsafe { embassy_stm32::rcc::set_freqs(clk) };
 
             // Note: TIM3 is taken for time accounting. It's configurable in Cargo.toml

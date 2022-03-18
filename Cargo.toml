@@ -1,6 +1,6 @@
 [package]
 authors = ["Nicolas Viennot <nicolas@viennot.biz>"]
-edition = "2018"
+edition = "2021"
 readme = "README.md"
 name = "app"
 version = "0.1.0"
@@ -14,9 +14,11 @@ cortex-m-rt = "0.7"
 rtt-target = { version = "0.3", features = ["cortex-m"]}
 
 embassy = { path = "embassy/embassy", features = ["log"] }
-embassy-stm32 = { path = "embassy/embassy-stm32", features= ["nightly", "stm32f107rc", "unstable-pac", "time-driver-tim3", "exti"] }
-stm32f1xx-hal = { git = "https://github.com/nviennot/stm32f1xx-hal.git", default-features = false, features = ["stm32f107", "medium"]}
-gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", features = ["gd32f307"] } # This one is for the clock register definitions.
+
+embassy-stm32 = { path = "embassy/embassy-stm32", features= ["nightly", "unstable-pac", "exti"] }
+stm32f1xx-hal = { git = "https://github.com/nviennot/stm32f1xx-hal.git", default-features = false, optional=true}
+# The gd32f3 crate is only to configure the clock at 120Mhz
+gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", optional=true }
 
 spi-memory = "0.2" # For the external flash access. Will be useful when we do firmware updates
 
@@ -29,6 +31,31 @@ heapless = "0.7"
 
 # This is for FAT32
 embedded-sdmmc = { git = "https://github.com/nviennot/embedded-sdmmc-rs.git" }
+
+
+[features]
+# MCUs
+gd32f307 = [
+    "gd32f3/gd32f307",
+    "stm32f1xx-hal/stm32f107",
+    "stm32f1xx-hal/medium",
+    "embassy-stm32/skip_clock_init",
+    "embassy-stm32/stm32f107rc",
+    "embassy-stm32/time-driver-tim3",
+]
+stm32f407 = [
+    "embassy-stm32/stm32f407ze",
+    "embassy-stm32/time-driver-tim3",
+]
+
+# Printers
+
+# Chitu L V3
+lv3 = ["stm32f407"]
+# Anycubic Mono 4K
+mono4k = ["gd32f307"]
+
+default = []
 
 # this lets you use `cargo fix`!
 [[bin]]
@@ -47,7 +74,6 @@ incremental = false
 lto = 'fat'
 opt-level = 'z'
 overflow-checks = false
-
 
 # uncomment for dev on these:
 

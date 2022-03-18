@@ -3,24 +3,49 @@ OPENOCD_INTERFACE ?= misc/openocd-stlink.cfg
 
 BUILD ?= debug
 TARGET_ELF ?= target/thumbv7em-none-eabihf/$(BUILD)/app
-
 BUILD_FLAGS ?=
+CARGO ?= $(HOME)/.cargo/bin/cargo
+
+#########################################################
+
+ifeq ($(PRINTER),)
+$(error PRINTER must be defined. Valid choices: mono4k, lv3)
+endif
+
+BUILD_FLAGS += --features $(PRINTER)
+
 ifeq ($(BUILD),release)
 	BUILD_FLAGS += --release
 endif
 
-CARGO ?= $(HOME)/.cargo/bin/cargo
 ifeq (,$(wildcard $(CARGO)))
 	CARGO := cargo
 endif
 
+# # We get the first string in the feature list matching the $(PRINTER)
+# # variable. It's a bit gross. I wish there was a better way.
+# MCU := $(shell \
+# 	grep -A10000 '^\[features\]$$' Cargo.toml | \
+# 	grep '^$(PRINTER)\b =' | \
+# 	sed -E 's/.*\["([^"]+)".*/\1/' \
+# )
+
+ifeq ($(PRINTER),)
+$(error PRINTER must be set. Try mono4k or lv3)
+endif
+
+#########################################################
+
 .PHONY: build run attach clean start_openocd start_jlink \
-	start_jlink_rtt start_probe_run_rtt restore_rom
+	start_jlink_rtt start_probe_run_rtt restore_rom check
 
 build:
 	@# We do build first, it shows compile error messages (objdump doesn't)
 	$(CARGO) build $(BUILD_FLAGS)
 	$(CARGO) objdump -q $(BUILD_FLAGS) -- -h | ./misc/rom_stats.py
+
+check:
+	$(CARGO) check $(BUILD_FLAGS)
 
 run: build
 	$(CARGO) run $(BUILD_FLAGS) -q

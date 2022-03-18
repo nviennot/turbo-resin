@@ -9,7 +9,8 @@ use crate::drivers::{
     touch_screen::TouchScreen,
     zaxis,
     lcd::Lcd,
-    clock,
+    gd32f307_clock,
+    CycleCounter,
     touch_screen::*,
     usb::UsbHost,
 };
@@ -53,8 +54,8 @@ impl Machine {
         //--------------------------
 
         // Can't use the HAL. The GD32 is too different.
-        let clocks = super::clock::get_120mhz_clocks_config();
-        clock::CycleCounter::new(cp.DWT).into_global();
+        let clocks = super::gd32f307_clock::get_120mhz_clocks_config();
+        CycleCounter::new(cp.DWT).into_global();
 
         //--------------------------
         //  External flash

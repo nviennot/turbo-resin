@@ -14,13 +14,22 @@ use std::io::Write;
 use std::path::PathBuf;
 
 fn main() {
+    #[cfg(feature = "stm32f407")]
+    let mcu = "stm32f407";
+
+    #[cfg(feature = "gd32f307")]
+    let mcu = "gd32f307";
+
+    let linker_file = format!("linker/{}.x", mcu);
+    let linker_file_content = std::fs::read(&linker_file)
+        .unwrap_or_else(|_| panic!("Cannot read {}", &linker_file));
+
     // Put `memory.x` in our output directory and ensure it's
     // on the linker search path.
     let out = &PathBuf::from(env::var_os("OUT_DIR").unwrap());
     File::create(out.join("memory.x"))
         .unwrap()
-        .write_all(include_bytes!("memory.x"))
-        .unwrap();
+        .write_all(&linker_file_content).unwrap();
     println!("cargo:rustc-link-search={}", out.display());
 
     // By default, Cargo will re-run a build script whenever

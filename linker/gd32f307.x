@@ -43,6 +43,5 @@ SECTIONS {
     *lib*:*(.text .text.*);
   } > FLASH
 
-_stext = ALIGN(4);
-
+  _stext = ALIGN(4);
 }

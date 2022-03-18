@@ -9,7 +9,7 @@ use embassy_stm32::spi::{Config, Spi};
 use embassy::time::{Duration, Timer};
 use embassy_stm32::rcc::low_level::RccPeripheral;
 
-use crate::drivers::clock::delay_us;
+use crate::drivers::gd32f307_clock::delay_us;
 
 use super::Drawing;
 
