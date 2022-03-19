@@ -38,11 +38,6 @@ impl Machine {
         let dp = unsafe { stm32f1xx_hal::pac::Peripherals::steal() };
         let mut gpioa = dp.GPIOA.split();
         let mut gpiob = dp.GPIOB.split();
-        let gpioc = dp.GPIOC.split();
-        let gpiod = dp.GPIOD.split();
-        let gpioe = dp.GPIOE.split();
-
-        let mut afio = dp.AFIO.constrain();
 
         // Note, we can't use separate functions, because we are consuming (as
         // in taking ownership of) the device peripherals struct, and so we
@@ -113,12 +108,16 @@ impl Machine {
         //  Stepper motor (Z-axis)
         //--------------------------
 
-        let (_pa15, pb3, _pb4) = afio.mapr.disable_jtag(gpioa.pa15, gpiob.pb3, gpiob.pb4);
+        // Disable JTAG to activate pa15, pb3, and pb4 as regular GPIO.
+        unsafe {
+            embassy_stm32::pac::AFIO.mapr().modify(|w|
+                w.set_swj_cfg(0b010)
+            );
+        }
 
         let z_bottom_sensor = zaxis::BottomSensor::new(
-            pb3,
-            // pb4,
-            &mut gpiob.crl,
+            p.PB3,
+            // pb4 is normally the top sensor
         );
 
         let drv8424 = zaxis::Drv8424::new(

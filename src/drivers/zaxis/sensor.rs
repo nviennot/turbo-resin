@@ -1,20 +1,17 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    gpio::*,
-    gpio::gpiob::*,
-};
+use embassy_stm32::gpio::{Input, Pull};
+use embassy_stm32::peripherals as p;
 
 pub struct BottomSensor {
-    pin: PB3<Input<PullUp>>,
+    pin: Input<'static, p::PB3>,
 }
 
 impl BottomSensor {
     pub fn new(
-        pin: PB3<Input<Floating>>,
-        gpiob_crl: &mut Cr<CRL, 'B'>,
+        pin: p::PB3,
     ) -> Self {
-        let pin = pin.into_pull_up_input(gpiob_crl);
+        let pin = Input::new(pin, Pull::Up);
         Self { pin }
     }
 
