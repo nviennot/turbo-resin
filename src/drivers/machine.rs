@@ -126,7 +126,7 @@ impl Machine {
             p.PA3, p.TIM2,
         );
 
-        let stepper = zaxis::MotionControl::new(drv8424, Timer::new(dp.TIM7, &clocks));
+        let stepper = zaxis::MotionControl::new(drv8424, p.TIM7);
 
         Self { ext_flash, display, touch_screen, stepper, lcd, z_bottom_sensor, usb_host }
     }

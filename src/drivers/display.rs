@@ -58,9 +58,8 @@ impl Display {
 
         fsmc: p::FSMC,
     ) -> Self {
-
         let fsmc = embassy_stm32::pac::FSMC;
-        embassy_stm32::peripherals::FSMC::enable();
+        p::FSMC::enable();
 
         let reset = Output::new(reset, Level::Low, Speed::Medium);
         let backlight = Output::new(backlight, Level::Low, Speed::Medium);

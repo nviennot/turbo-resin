@@ -1,10 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    prelude::*,
-    timer::{Timer, Event, CountDownTimer},
-    pac::TIM7,
-};
+use embassy_stm32::pac::timer::regs::Arr16;
+use embassy_stm32::peripherals as p;
+use embassy_stm32::rcc::low_level::RccPeripheral;
+use embassy_stm32::time::Hertz;
+use embassy_stm32::time::U32Ext;
+
+use embassy_stm32::timer::low_level::{Basic16bitInstance, GeneralPurpose16bitInstance};
 
 use super::step_generator::StepGenerator;
 
@@ -12,6 +14,23 @@ use crate::consts::zaxis::{
     stepper::*,
     motion_control::*,
 };
+
+type StepTimer = p::TIM7; // Any timer will do.
+
+trait TimerExt {
+    fn set_psc(psc: u16);
+    fn set_arr(psc: u16);
+}
+
+impl TimerExt for StepTimer {
+    fn set_psc(psc: u16) {
+        unsafe { Self::regs_gp16().psc().write(|w| w.set_psc(psc)) }
+    }
+
+    fn set_arr(arr: u16) {
+        unsafe { Self::regs_gp16().arr().write(|w| w.set_arr(arr)); }
+    }
+}
 
 
 use super::{
@@ -21,7 +40,7 @@ use super::{
 
 pub struct MotionControl {
     drv8424: Drv8424,
-    step_timer: CountDownTimer<TIM7>,
+    step_timer: p::TIM7,
     stepgen: StepGenerator,
     current_position: Steps,
     target: Steps,
@@ -30,7 +49,7 @@ pub struct MotionControl {
 impl MotionControl {
     pub fn new(
         drv8424: Drv8424,
-        step_timer: Timer<TIM7>, // Any timer will do.
+        mut step_timer: StepTimer,
     ) -> Self {
         let stepgen = StepGenerator::new(
             MAX_ACCELERATION.mm().0 as f32,
@@ -38,7 +57,11 @@ impl MotionControl {
             MAX_SPEED.mm().0 as f32,
         );
 
-        let step_timer = step_timer.start_with_tick_freq(STEP_TIMER_FREQ.hz());
+        StepTimer::enable();
+        step_timer.start();
+
+        let psc = (StepTimer::frequency().0 / STEP_TIMER_FREQ).checked_sub(1).unwrap();
+        StepTimer::set_psc(psc.try_into().unwrap());
 
         let current_position = Steps(0);
         let target = Steps(0);
@@ -47,7 +70,7 @@ impl MotionControl {
     }
 
     pub fn on_interrupt(&mut self) {
-        self.step_timer.clear_update_interrupt_flag();
+        self.step_timer.clear_update_interrupt();
 
         let next_delay = self.do_step(|stepgen| {
             // We do some useful things while we wait for the 1us delay to pass
@@ -68,7 +91,7 @@ impl MotionControl {
                 ((delay_us + 0.5) as u16).saturating_sub(1)
             };
 
-            self.step_timer.set_arr(arr);
+            StepTimer::set_arr(arr);
             // Note: if cnt > arr at this point, an interrupt event is generated
             // immediately. This is what we want.
             // But it should not happen because MIN_DELAY_VALUE == 15.
@@ -120,10 +143,11 @@ impl MotionControl {
 
         // We need to hold the enable pin high for 5us before we can start
         // stepping the motor. That's from the DRV8424 datasheet.
-        self.step_timer.set_arr(5);
+        StepTimer::set_arr((5 * STEP_TIMER_FREQ / 1_000_000) as u16);
+
         self.step_timer.reset();
 
-        self.step_timer.listen(Event::Update);
+        self.step_timer.enable_update_interrupt(true);
     }
 
     pub fn set_origin(&mut self, origin_position: Steps) {
@@ -141,7 +165,7 @@ impl MotionControl {
         self.stepgen.set_remaining_steps(0);
         self.target = self.current_position;
 
-        self.step_timer.unlisten(Event::Update);
+        self.step_timer.enable_update_interrupt(false);
         self.drv8424.disable();
     }
 
