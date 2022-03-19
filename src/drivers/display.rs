@@ -1,25 +1,24 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    gpio::*,
-    gpio::gpioa::*,
-    gpio::gpioc::*,
-    gpio::gpiod::*,
-    gpio::gpioe::*,
-    pac::{self, FSMC},
-};
+use embassy_stm32::gpio::low_level::{AFType, Pin};
+use embassy_stm32::gpio::{Output, Level, Speed};
+
+use embassy_stm32::{rcc::low_level::RccPeripheral, pac::fsmc::vals};
+
+use embassy_stm32::peripherals as p;
 
 use crate::consts::display::*;
 
 pub struct Display {
-    pub reset: PC6<Output<PushPull>>,
-    pub backlight: PA10<Output<PushPull>>,
+    pub reset: Output<'static, p::PC6>,
+    pub backlight: Output<'static, p::PA10>,
 }
 
 impl Display {
     // We use Bank0 (0x60000000) to address the display.
     // The A16 wire is used to select the DATA or CMD register. Its address is
-    // 0x00020000 = 1 << (16 + 1) (not sure why the +1).
+    // 0x00020000 = 1 << (16 + 1) (The +1 is because of the 16 bit addressing
+    // mode as opposed to 8 bit).
     const TFT_CMD:  *mut u16 = 0x6000_0000u32 as *mut u16;
     const TFT_DATA: *mut u16 = 0x6002_0000u32 as *mut u16;
 
@@ -30,96 +29,91 @@ impl Display {
     );
     */
 
+    #[inline(never)]
     pub fn new(
-        reset: PC6<Input<Floating>>,
-        backlight: PA10<Input<Floating>>,
+        reset: p::PC6,
+        backlight: p::PA10,
 
-        output_enable: PD4<Input<Floating>>,
-        write_enable: PD5<Input<Floating>>,
-        cs: PD7<Input<Floating>>,
-        a16: PD11<Input<Floating>>,
+        output_enable: p::PD4,
+        write_enable: p::PD5,
+        cs: p::PD7,
+        a16: p::PD11,
 
-        d0: PD14<Input<Floating>>,
-        d1: PD15<Input<Floating>>,
-        d2: PD0<Input<Floating>>,
-        d3: PD1<Input<Floating>>,
-        d4: PE7<Input<Floating>>,
-        d5: PE8<Input<Floating>>,
-        d6: PE9<Input<Floating>>,
-        d7: PE10<Input<Floating>>,
-        d8: PE11<Input<Floating>>,
-        d9: PE12<Input<Floating>>,
-        d10: PE13<Input<Floating>>,
-        d11: PE14<Input<Floating>>,
-        d12: PE15<Input<Floating>>,
-        d13: PD8<Input<Floating>>,
-        d14: PD9<Input<Floating>>,
-        d15: PD10<Input<Floating>>,
+        d0: p::PD14,
+        d1: p::PD15,
+        d2: p::PD0,
+        d3: p::PD1,
+        d4: p::PE7,
+        d5: p::PE8,
+        d6: p::PE9,
+        d7: p::PE10,
+        d8: p::PE11,
+        d9: p::PE12,
+        d10: p::PE13,
+        d11: p::PE14,
+        d12: p::PE15,
+        d13: p::PD8,
+        d14: p::PD9,
+        d15: p::PD10,
 
-        fsmc: FSMC,
-
-        gpioa_crh: &mut Cr<CRH, 'A'>,
-        gpioc_crl: &mut Cr<CRL, 'C'>,
-        gpiod_crl: &mut Cr<CRL, 'D'>,
-        gpiod_crh: &mut Cr<CRH, 'D'>,
-        gpioe_crl: &mut Cr<CRL, 'E'>,
-        gpioe_crh: &mut Cr<CRH, 'E'>,
+        fsmc: p::FSMC,
     ) -> Self {
 
-        let reset = reset.into_push_pull_output(gpioc_crl);
-        let backlight = backlight.into_push_pull_output(gpioa_crh);
+        let fsmc = embassy_stm32::pac::FSMC;
+        embassy_stm32::peripherals::FSMC::enable();
+
+        let reset = Output::new(reset, Level::Low, Speed::Medium);
+        let backlight = Output::new(backlight, Level::Low, Speed::Medium);
 
         unsafe {
-            // Enables the EXMC module
-            (*pac::RCC::ptr()).ahbenr.modify(|r,w| w.bits(r.bits() | 1 << 8));
+            // PD4: EXMC_NOE: Output Enable
+            output_enable.set_as_af(0, AFType::OutputPushPull);
+            // PD5: EXMC_NWE: Write enable
+            write_enable.set_as_af(0, AFType::OutputPushPull);
+            // PD7: EXMC_NE0: Chip select
+            cs.set_as_af(0, AFType::OutputPushPull);
+            // A16: Selects the Command or Data register
+            a16.set_as_af(0, AFType::OutputPushPull);
+
+            d0.set_as_af(0, AFType::OutputPushPull);
+            d1.set_as_af(0, AFType::OutputPushPull);
+            d2.set_as_af(0, AFType::OutputPushPull);
+            d3.set_as_af(0, AFType::OutputPushPull);
+            d4.set_as_af(0, AFType::OutputPushPull);
+            d5.set_as_af(0, AFType::OutputPushPull);
+            d6.set_as_af(0, AFType::OutputPushPull);
+            d7.set_as_af(0, AFType::OutputPushPull);
+            d8.set_as_af(0, AFType::OutputPushPull);
+            d9.set_as_af(0, AFType::OutputPushPull);
+            d10.set_as_af(0, AFType::OutputPushPull);
+            d11.set_as_af(0, AFType::OutputPushPull);
+            d12.set_as_af(0, AFType::OutputPushPull);
+            d13.set_as_af(0, AFType::OutputPushPull);
+            d14.set_as_af(0, AFType::OutputPushPull);
+            d15.set_as_af(0, AFType::OutputPushPull);
         }
 
-        // PD4: EXMC_NOE: Output Enable
-        output_enable.into_alternate_push_pull(gpiod_crl);
-        // PD5: EXMC_NWE: Write enable
-        write_enable.into_alternate_push_pull(gpiod_crl);
-        // PD7: EXMC_NE0: Chip select
-        cs.into_alternate_push_pull(gpiod_crl);
-        // A16: Selects the Command or Data register
-        a16.into_alternate_push_pull(gpiod_crh);
-
-        d0.into_alternate_push_pull(gpiod_crh);
-        d1.into_alternate_push_pull(gpiod_crh);
-        d2.into_alternate_push_pull(gpiod_crl);
-        d3.into_alternate_push_pull(gpiod_crl);
-        d4.into_alternate_push_pull(gpioe_crl);
-        d5.into_alternate_push_pull(gpioe_crh);
-        d6.into_alternate_push_pull(gpioe_crh);
-        d7.into_alternate_push_pull(gpioe_crh);
-        d8.into_alternate_push_pull(gpioe_crh);
-        d9.into_alternate_push_pull(gpioe_crh);
-        d10.into_alternate_push_pull(gpioe_crh);
-        d11.into_alternate_push_pull(gpioe_crh);
-        d12.into_alternate_push_pull(gpioe_crh);
-        d13.into_alternate_push_pull(gpiod_crh);
-        d14.into_alternate_push_pull(gpiod_crh);
-        d15.into_alternate_push_pull(gpiod_crh);
-
         unsafe {
-            fsmc.bcr1.write(|w| w
+            fsmc.bcr1().write(|w| {
                 // Enable NOR Bank 0
-                .mbken().set_bit()
+                w.set_mbken(vals::BcrMbken::ENABLED);
                 // data width: 16 bits
-                .mwid().bits(1)
+                w.set_mwid(vals::BcrMwid::BITS16);
                 // write: enable
-                .wren().set_bit()
-            );
-            fsmc.btr1.write(|w| w
+                w.set_wren(vals::BcrWren::ENABLED);
+            });
+
+            fsmc.btr1().write(|w| {
                 // Access Mode A
-                .accmod().bits(0)
+                w.set_accmod(vals::BtrAccmod::A);
                 // Address setup time: not needed.
-                .addset().bits(0)
+                w.set_addset(0);
                 // Data setup and hold time.
                 // (2+1)/120MHz = 25ns. Should be plenty enough.
                 // Typically, 10ns is the minimum.
-                .datast().bits(2)
-                .datlat().bits(2)
-            );
+                w.set_datast(2);
+                w.set_datlat(2);
+            });
         }
 
         Self { reset, backlight }

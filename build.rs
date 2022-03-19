@@ -14,6 +14,9 @@ use std::io::Write;
 use std::path::PathBuf;
 
 fn main() {
+    #[cfg(not(any(feature = "stm32f407", feature = "gd32f307")))]
+    compile_error!("No printer selected. Use make PRINTER=mono4k or cargo --features=mono4k");
+
     #[cfg(feature = "stm32f407")]
     let mcu = "stm32f407";
 

@@ -40,7 +40,7 @@ gd32f307 = [
     "stm32f1xx-hal/stm32f107",
     "stm32f1xx-hal/medium",
     "embassy-stm32/skip_clock_init",
-    "embassy-stm32/stm32f107rc",
+    "embassy-stm32/gd32f307ve",
     "embassy-stm32/time-driver-tim3",
 ]
 stm32f407 = [

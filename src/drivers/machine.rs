@@ -38,8 +38,8 @@ impl Machine {
         let dp = unsafe { stm32f1xx_hal::pac::Peripherals::steal() };
         let mut gpioa = dp.GPIOA.split();
         let mut gpiob = dp.GPIOB.split();
-        let mut gpioc = dp.GPIOC.split();
-        let mut gpiod = dp.GPIOD.split();
+        let gpioc = dp.GPIOC.split();
+        let gpiod = dp.GPIOD.split();
         let mut gpioe = dp.GPIOE.split();
 
         let mut afio = dp.AFIO.constrain();
@@ -74,13 +74,12 @@ impl Machine {
 
         //let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
         let mut display = Display::new(
-            gpioc.pc6, gpioa.pa10,
-            gpiod.pd4, gpiod.pd5, gpiod.pd7, gpiod.pd11,
-            gpiod.pd14, gpiod.pd15, gpiod.pd0, gpiod.pd1, gpioe.pe7, gpioe.pe8,
-            gpioe.pe9, gpioe.pe10, gpioe.pe11, gpioe.pe12, gpioe.pe13,
-            gpioe.pe14, gpioe.pe15, gpiod.pd8, gpiod.pd9, gpiod.pd10,
-            dp.FSMC,
-            &mut gpioa.crh, &mut gpioc.crl, &mut gpiod.crl, &mut gpiod.crh, &mut gpioe.crl, &mut gpioe.crh,
+            p.PC6, p.PA10,
+            p.PD4, p.PD5, p.PD7, p.PD11,
+            p.PD14, p.PD15, p.PD0, p.PD1, p.PE7, p.PE8,
+            p.PE9, p.PE10, p.PE11, p.PE12, p.PE13,
+            p.PE14, p.PE15, p.PD8, p.PD9, p.PD10,
+            p.FSMC,
         );
         display.init();
 
