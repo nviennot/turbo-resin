@@ -1,18 +1,12 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    prelude::*,
-    gpio::*,
-    gpio::gpioa::*,
-    gpio::gpioc::*,
-    gpio::gpioe::*,
-    timer::{Timer, Tim2NoRemap},
-    afio::MAPR,
-    pac::TIM2,
-    pwm::Channel,
-};
+use embassy_stm32::pwm::{simple_pwm::SimplePwm, Channel};
 
-use embedded_hal::digital::v2::OutputPin;
+use embassy_stm32::gpio::{Dynamic, Output, Level, Speed, Pull};
+use embassy_stm32::{rcc::low_level::RccPeripheral, pac::fsmc::vals};
+use embassy_stm32::time::U32Ext;
+
+use embassy_stm32::peripherals as p;
 
 use crate::consts::zaxis::hardware::*;
 
@@ -23,47 +17,41 @@ pub enum Direction {
 }
 
 pub struct Drv8424 {
-    step: PE5<Output<PushPull>>,
-    dir: PE4<Output<PushPull>>,
-    enable: PE6<Output<PushPull>>,
-    mode0: PC3<Dynamic>,
-    mode1: PC0<Dynamic>,
-    gpioc_crl: Cr<CRL, 'C'>,
+    step: Output<'static, p::PE5>,
+    dir: Output<'static, p::PE4>,
+    enable: Output<'static, p::PE6>,
+    mode0: Dynamic<'static, p::PC3>,
+    mode1: Dynamic<'static, p::PC0>,
     pub step_multiplier: u32,
 }
 
 impl Drv8424 {
+    #[inline(never)]
     pub fn new(
-        dir: PE4<Input<Floating>>,
-        step: PE5<Input<Floating>>,
-        enable: PE6<Input<Floating>>,
+        dir: p::PE4,
+        step: p::PE5,
+        enable: p::PE6,
 
-        mode0: PC3<Input<Floating>>,
-        mode1: PC0<Input<Floating>>,
+        mode0: p::PC3,
+        mode1: p::PC0,
 
-        decay0: PC1<Input<Floating>>,
-        decay1: PC2<Input<Floating>>,
+        decay0: p::PC1,
+        decay1: p::PC2,
 
-        vref: PA3<Input<Floating>>,
-        pwm_timer: Timer<TIM2>, // Or TIM5 in alternate mode.
-
-        gpioa_crl: &mut Cr<CRL, 'A'>,
-        mut gpioc_crl: Cr<CRL, 'C'>, // We need it to reconfigure microstepping at runtime
-        gpioe_crl: &mut Cr<CRL, 'E'>,
-
-        mapr: &mut MAPR,
+        vref: p::PA3,
+        pwm_timer: p::TIM2, // // Or TIM5 in alternate mode.
     ) -> Self
     {
         // Pins that are related, but usage not known:
         // PC13 output (1)
         // PA2 output
 
-        let dir = dir.into_push_pull_output(gpioe_crl);
-        let step = step.into_push_pull_output(gpioe_crl);
-        let enable = enable.into_push_pull_output(gpioe_crl);
+        let dir = Output::new(dir, Level::Low, Speed::Medium);
+        let step = Output::new(step, Level::Low, Speed::Medium);
+        let enable = Output::new(enable, Level::Low, Speed::Medium);
 
-        let mode0 = mode0.into_dynamic(&mut gpioc_crl);
-        let mode1 = mode1.into_dynamic(&mut gpioc_crl);
+        let mode0 = Dynamic::new(mode0);
+        let mode1 = Dynamic::new(mode1);
 
 
         // Decay0 | Decay1 | Increasing Steps          | Decreasing Steps
@@ -76,18 +64,18 @@ impl Drv8424 {
         //  Hi-Z  |   1    | Slow decay                | Slow decay
 
         // New decay settings take 10us to take effect.
-        decay0.into_push_pull_output_with_state(&mut gpioc_crl, PinState::Low);
-        decay1.into_push_pull_output_with_state(&mut gpioc_crl, PinState::Low);
+        // forget() because dropping will turn back the GPIO into inputs.
+        core::mem::forget(Output::new(decay0, Level::Low, Speed::Low));
+        core::mem::forget(Output::new(decay1, Level::Low, Speed::Low));
 
         // vref is used to set the amount of current the motor receives.
-        let vref = vref.into_alternate_push_pull(gpioa_crl);
-        let mut pwm = pwm_timer.pwm::<Tim2NoRemap, _, _, _>(vref, mapr, 100.khz());
-        pwm.set_duty(Channel::C4, (((pwm.get_max_duty() as u32) * MOTOR_CURRENT_PERCENT) / 100) as u16);
-        pwm.enable(Channel::C4);
+        let mut pwm = SimplePwm::new_1ch4(pwm_timer, vref, 100.khz());
+        pwm.set_duty(Channel::Ch4, ((pwm.get_max_duty() as u32) * MOTOR_CURRENT_PERCENT / 100) as u16);
+        pwm.enable(Channel::Ch4);
 
         let step_multiplier = 0;
 
-        Self { dir, step, enable, mode0, mode1, gpioc_crl, step_multiplier }
+        Self { dir, step, enable, mode0, mode1, step_multiplier }
     }
 
     // Note: wait at least 200ns before STEP changes after changing the microstepping
@@ -110,16 +98,16 @@ impl Drv8424 {
 
         if self.step_multiplier != step_multiplier {
             match step_multiplier {
-                2|16|128 =>   { self.mode0.make_floating_input(&mut self.gpioc_crl); },
-                4|8|64|256 => { self.mode0.make_push_pull_output(&mut self.gpioc_crl); let _ = self.mode0.set_low(); },
-                1|32 =>       { self.mode0.make_push_pull_output(&mut self.gpioc_crl); let _ = self.mode0.set_high(); },
+                2|16|128 =>   { self.mode0.make_input(Pull::None) },
+                4|8|64|256 => { self.mode0.make_output(Level::Low, Speed::Medium) },
+                1|32 =>       { self.mode0.make_output(Level::High, Speed::Medium) },
                 _ => { unimplemented!() },
             }
 
             match step_multiplier {
-                1|2|8 =>    { self.mode1.make_floating_input(&mut self.gpioc_crl); },
-                128|256 =>  { self.mode1.make_push_pull_output(&mut self.gpioc_crl); let _ = self.mode1.set_low(); },
-                16|32|64 => { self.mode1.make_push_pull_output(&mut self.gpioc_crl); let _ = self.mode1.set_high(); },
+                1|2|8 =>    { self.mode1.make_input(Pull::None); },
+                128|256 =>  { self.mode1.make_output(Level::Low, Speed::Medium); },
+                16|32|64 => { self.mode1.make_output(Level::High, Speed::Medium); },
                 _ => { unimplemented!() },
             }
 

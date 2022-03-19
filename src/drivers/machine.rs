@@ -40,7 +40,7 @@ impl Machine {
         let mut gpiob = dp.GPIOB.split();
         let gpioc = dp.GPIOC.split();
         let gpiod = dp.GPIOD.split();
-        let mut gpioe = dp.GPIOE.split();
+        let gpioe = dp.GPIOE.split();
 
         let mut afio = dp.AFIO.constrain();
 
@@ -122,12 +122,8 @@ impl Machine {
         );
 
         let drv8424 = zaxis::Drv8424::new(
-            gpioe.pe4, gpioe.pe5, gpioe.pe6,
-            gpioc.pc3, gpioc.pc0,
-            gpioc.pc1, gpioc.pc2,
-            gpioa.pa3,
-            Timer::new(dp.TIM2, &clocks),
-            &mut gpioa.crl, gpioc.crl, &mut gpioe.crl, &mut afio.mapr,
+            p.PE4, p.PE5, p.PE6, p.PC3, p.PC0, p.PC1, p.PC2,
+            p.PA3, p.TIM2,
         );
 
         let stepper = zaxis::MotionControl::new(drv8424, Timer::new(dp.TIM7, &clocks));

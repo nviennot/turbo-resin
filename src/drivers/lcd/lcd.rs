@@ -31,7 +31,9 @@ impl Lcd {
         dma_rx: p::DMA1_CH2,
         dma_tx: p::DMA1_CH3,
     ) -> Self {
-        let _reset =  Output::new(reset, Level::Low, Speed::Low);
+        // dropping will reset the pin to input.
+        core::mem::forget(Output::new(reset, Level::Low, Speed::Low));
+
         let cs = Output::new(cs, Level::High, Speed::Medium);
 
         let cfg = Config::default();
