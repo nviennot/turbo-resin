@@ -1,8 +1,5 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal as _;
-use stm32f1xx_hal::timer::Timer;
-
 use crate::drivers::{
     //ext_flash::ExtFlash,
     display::Display,
@@ -25,30 +22,14 @@ pub struct Machine {
     pub usb_host: UsbHost,
 }
 
-use embassy_stm32::Peripherals;
-use stm32f1xx_hal::prelude::*;
+use embassy_stm32::{Peripherals, gpio::Input};
 
 impl Machine {
     pub fn new(cp: cortex_m::Peripherals, p: Peripherals) -> Self {
-        // Okay, so what we are doing is really sad. Embassy doesn't have well
-        // enough support for the things we need to do. For example running a
-        // PWM on PA3 is not implemented.
-        // So we are going to use both HALs. Embassy's and the usual one.
-
-        let dp = unsafe { stm32f1xx_hal::pac::Peripherals::steal() };
-        let mut gpioa = dp.GPIOA.split();
-
-        // Note, we can't use separate functions, because we are consuming (as
-        // in taking ownership of) the device peripherals struct, and so we
-        // cannot pass it as arguments to a function, as it would only be
-        // partially valid.
-
         //--------------------------
         //  Clock configuration
         //--------------------------
 
-        // Can't use the HAL. The GD32 is too different.
-        let clocks = super::gd32f307_clock::get_120mhz_clocks_config();
         CycleCounter::new(cp.DWT).into_global();
 
         //--------------------------
@@ -98,7 +79,6 @@ impl Machine {
         //--------------------------
         // USB Host
         //--------------------------
-        gpioa.pa9.into_pull_up_input(&mut gpioa.crh); // Not sure what that's for.
         let usb_host = UsbHost::new(p.PA11, p.PA12, p.USB_OTG_FS);
 
         //--------------------------

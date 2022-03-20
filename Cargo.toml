@@ -14,9 +14,8 @@ cortex-m-rt = "0.7"
 rtt-target = { version = "0.3", features = ["cortex-m"]}
 
 embassy = { path = "embassy/embassy", features = ["log"] }
-
 embassy-stm32 = { path = "embassy/embassy-stm32", features= ["nightly", "unstable-pac", "exti"] }
-stm32f1xx-hal = { git = "https://github.com/nviennot/stm32f1xx-hal.git", default-features = false, optional=true}
+
 # The gd32f3 crate is only to configure the clock at 120Mhz
 gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", optional=true }
 
@@ -37,8 +36,6 @@ embedded-sdmmc = { git = "https://github.com/nviennot/embedded-sdmmc-rs.git" }
 # MCUs
 gd32f307 = [
     "gd32f3/gd32f307",
-    "stm32f1xx-hal/stm32f107",
-    "stm32f1xx-hal/medium",
     "embassy-stm32/skip_clock_init",
     "embassy-stm32/gd32f307ve",
     "embassy-stm32/time-driver-tim3",

@@ -1,15 +1,8 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    time::Hertz,
-    rcc::Clocks,
-    prelude::*,
-};
-
-use gd32f3::gd32f307::{
-    PMU,
-    RCU,
-};
+use embassy_stm32::rcc::Clocks;
+use embassy_stm32::time::U32Ext;
+use gd32f3::gd32f307::{PMU, RCU};
 
 pub fn setup_clock_120m_hxtal() -> Clocks {
     // Transcribed from the GD32F30x Firmware Library
@@ -83,54 +76,16 @@ pub fn setup_clock_120m_hxtal() -> Clocks {
         );
     }
 
-    get_120mhz_clocks_config()
-}
-
-pub fn get_120mhz_clocks_config() -> Clocks {
-    // The stm32 create has the Clocks struct, but all the fields are private.
-    // We are left doing this hack with transmuting memory.
-    // Not the safest thing, but good enough for now.
-    struct ClocksDup {
-        _hclk: Hertz,
-        _pclk1: Hertz,
-        _pclk2: Hertz,
-        _ppre1: u8,
-        _ppre2: u8,
-        _sysclk: Hertz,
-        _adcclk: Hertz,
-        _usbclk_valid: bool,
-    }
-
-    let clocks = ClocksDup {
-        _hclk: 120.mhz().into(),
-        _pclk1: 60.mhz().into(),
-        _pclk2: 120.mhz().into(),
-
-        _ppre1: 2, // These are the timer multipliers
-        _ppre2: 1,
-
-        _sysclk: 120.mhz().into(),
-        _adcclk: 30.mhz().into(),
-
-        _usbclk_valid: true,
-    };
-
-    unsafe { core::mem::transmute(clocks) }
-}
-
-pub fn embassy_stm32_clock_from(clk: &Clocks) -> embassy_stm32::rcc::Clocks {
-    use embassy_stm32::time::Hertz;
-    embassy_stm32::rcc::Clocks {
-        sys: Hertz(clk.sysclk().0),
-        apb1: Hertz(clk.pclk1().0),
-        apb2: Hertz(clk.pclk2().0),
-        apb1_tim: Hertz(clk.pclk1_tim().0),
-        apb2_tim: Hertz(clk.pclk2_tim().0),
-        ahb1: Hertz(clk.hclk().0),
-        adc: Hertz(clk.adcclk().0),
+    Clocks {
+        sys: 120.mhz().into(),
+        ahb1: 120.mhz().into(),
+        apb1: 60.mhz().into(),
+        apb2: 120.mhz().into(),
+        apb1_tim: 120.mhz().into(),
+        apb2_tim: 120.mhz().into(),
+        adc: 30.mhz().into(),
     }
 }
-
 
 // 3 clock cycles is 25ns at 120MHz
 #[inline(always)]
@@ -148,4 +103,3 @@ pub fn delay_us(duration_us: u32) {
 pub fn delay_ms(duration_ms: u32) {
     delay_us(duration_ms*1000)
 }
-

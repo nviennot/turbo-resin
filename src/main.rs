@@ -259,7 +259,6 @@ fn main() -> ! {
         let p = {
             // We are doing the clock init here because of the gigadevice differences.
             let clk = crate::drivers::gd32f307_clock::setup_clock_120m_hxtal();
-            let clk = crate::drivers::gd32f307_clock::embassy_stm32_clock_from(&clk);
             unsafe { embassy_stm32::rcc::set_freqs(clk) };
 
             // Note: TIM3 is taken for time accounting. It's configurable in Cargo.toml

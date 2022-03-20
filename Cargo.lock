@@ -56,7 +56,6 @@ dependencies = [
  "lvgl",
  "rtt-target",
  "spi-memory",
- "stm32f1xx-hal",
 ]
 
 [[package]]
@@ -175,12 +174,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "cast"
-version = "0.3.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "37b2a672a2cb129a2e41c10b1224bb368f9f37a2b16b612598138befd7b37eb5"
-
-[[package]]
 name = "cc"
 version = "1.0.73"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -207,7 +200,7 @@ version = "0.1.0"
 source = "git+https://github.com/nviennot/chiptool#15e9f79cdf3f60a2483b7f994170981cfd8acd55"
 dependencies = [
  "anyhow",
- "cast 0.2.7",
+ "cast",
  "clap 3.1.6",
  "env_logger",
  "inflections",
@@ -488,15 +481,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "embedded-dma"
-version = "0.1.2"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "46c8c02e4347a0267ca60813c952017f4c5948c232474c6010a381a337f1bda4"
-dependencies = [
- "stable_deref_trait",
-]
-
-[[package]]
 name = "embedded-graphics"
 version = "0.7.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -584,15 +568,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "3f9eec918d3f24069decb9af1554cad7c880e2da24a9afd88aca000531ab82c1"
 
 [[package]]
-name = "fugit"
-version = "0.3.5"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f6d8595783d5ca52f0e9830036b3d24f359fae0fcc6bb5fde41f2dd82997cb58"
-dependencies = [
- "gcd",
-]
-
-[[package]]
 name = "futures"
 version = "0.3.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -663,15 +638,6 @@ dependencies = [
  "futures-task",
  "pin-project-lite",
  "pin-utils",
-]
-
-[[package]]
-name = "gcd"
-version = "2.1.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "f37978dab2ca789938a83b2f8bc1ef32db6633af9051a6cd409eff72cbaaa79a"
-dependencies = [
- "paste",
 ]
 
 [[package]]
@@ -935,12 +901,6 @@ checksum = "8e22443d1643a904602595ba1cd8f7d896afe56d26712531c5ff73a15b2fbf64"
 dependencies = [
  "memchr",
 ]
-
-[[package]]
-name = "paste"
-version = "1.0.6"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "0744126afe1a6dd7f394cb50a716dbe086cb06e255e53d8d0185d82828358fb5"
 
 [[package]]
 name = "peeking_take_while"
@@ -1261,34 +1221,6 @@ dependencies = [
  "regex",
  "serde",
  "serde_yaml",
-]
-
-[[package]]
-name = "stm32f1"
-version = "0.14.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "78d0d11d776bc6f165c68c67468826b33b3eabd04c3c319df5e8476dd580002d"
-dependencies = [
- "bare-metal 1.0.0",
- "cortex-m",
- "vcell",
-]
-
-[[package]]
-name = "stm32f1xx-hal"
-version = "0.8.0"
-source = "git+https://github.com/nviennot/stm32f1xx-hal.git#3b64a2dc9c438fa9381ff1344fceee779181ffc2"
-dependencies = [
- "bxcan",
- "cast 0.3.0",
- "cortex-m",
- "cortex-m-rt",
- "embedded-dma",
- "embedded-hal 0.2.7",
- "fugit",
- "nb 1.0.0",
- "stm32f1",
- "void",
 ]
 
 [[package]]

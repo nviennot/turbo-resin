@@ -179,7 +179,7 @@ impl ADS7846 {
         let sck = Output::new(sck, Level::Low, Speed::Medium);
         let miso = Input::new(miso, Pull::None);
         let mosi = Output::new(mosi, Level::Low, Speed::Medium);
-        let touch_detected = ExtiInput::new(Input::new(touch_detected, Pull::None), exti9);
+        let touch_detected = ExtiInput::new(Input::new(touch_detected, Pull::Up), exti9);
 
         Self { cs, sck, miso, mosi, touch_detected }
     }
