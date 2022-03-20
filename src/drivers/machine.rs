@@ -4,7 +4,7 @@ use stm32f1xx_hal as _;
 use stm32f1xx_hal::timer::Timer;
 
 use crate::drivers::{
-    ext_flash::ExtFlash,
+    //ext_flash::ExtFlash,
     display::Display,
     touch_screen::TouchScreen,
     zaxis,
@@ -16,7 +16,7 @@ use crate::drivers::{
 };
 
 pub struct Machine {
-    pub ext_flash: ExtFlash,
+    //pub ext_flash: ExtFlash,
     pub display: Display,
     pub touch_screen: TouchScreen,
     pub stepper: zaxis::MotionControl,
@@ -37,7 +37,6 @@ impl Machine {
 
         let dp = unsafe { stm32f1xx_hal::pac::Peripherals::steal() };
         let mut gpioa = dp.GPIOA.split();
-        let mut gpiob = dp.GPIOB.split();
 
         // Note, we can't use separate functions, because we are consuming (as
         // in taking ownership of) the device peripherals struct, and so we
@@ -56,12 +55,13 @@ impl Machine {
         //  External flash
         //--------------------------
 
+        /*
         let ext_flash = ExtFlash::new(
             gpiob.pb12, gpiob.pb13, gpiob.pb14, gpiob.pb15,
             dp.SPI2,
             &clocks, &mut gpiob.crh
         );
-
+        */
 
         //--------------------------
         //  TFT display
@@ -103,7 +103,6 @@ impl Machine {
             dp.OTG_FS_GLOBAL, dp.USB_OTG_HOST, dp.OTG_FS_PWRCLK, &mut gpioa.crh);
 
 
-
         //--------------------------
         //  Stepper motor (Z-axis)
         //--------------------------
@@ -127,6 +126,6 @@ impl Machine {
 
         let stepper = zaxis::MotionControl::new(drv8424, p.TIM7);
 
-        Self { ext_flash, display, touch_screen, stepper, lcd, z_bottom_sensor, usb_host }
+        Self { display, touch_screen, stepper, lcd, z_bottom_sensor, usb_host }
     }
 }

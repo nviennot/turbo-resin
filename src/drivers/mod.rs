@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 pub mod machine;
-pub mod ext_flash;
+//pub mod ext_flash;
 #[cfg(feature = "gd32f307")]
 pub mod gd32f307_clock;
 pub mod display;
