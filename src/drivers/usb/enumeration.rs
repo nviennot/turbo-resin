@@ -21,6 +21,7 @@ unsafe fn consume<T>(buf: &mut &[MaybeUninit<u8>]) -> UsbResult<T> {
 }
 
 pub async fn enumerate<H: InterfaceHandler>() -> UsbResult<H> {
+    trace!("USB enumeration starting");
     const DEV_ADDR: u8 = 1;
     let mut ctrl = {
         let mut ctrl = ControlPipe::new(0, 8);

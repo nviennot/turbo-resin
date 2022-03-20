@@ -1,18 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use core::mem::{self, MaybeUninit};
+use core::mem::MaybeUninit;
 
-use stm32f1xx_hal::pac::{
-    self,
-    usb_otg_host::{FS_HCCHAR0, FS_HCINT0, FS_HCINTMSK0, FS_HCTSIZ0},
+use embassy_stm32::pac::{
+    otgfs::{regs, vals},
+    common::{Reg, RW},
 };
 
 use crate::util::io::{Read, Write, impl_read_obj, impl_write_obj};
 use core::future::Future;
 use embassy::channel::signal::Signal;
-use super::UsbResult;
-
-const OTG_CORE_BASE_ADDR: *mut u8 = 0x5000_0000u32 as *mut u8;
+use super::{REGS, UsbResult};
 
 const NUM_CHANNELS: usize = 8;
  // There can be many NAKs. It's okay to do _that_ many retries, it's fast.
@@ -34,49 +32,45 @@ impl Default for ChannelInterruptContext {
 
 static mut INTERRUPT_CONTEXTS: [MaybeUninit<ChannelInterruptContext>; NUM_CHANNELS] = MaybeUninit::uninit_array();
 
-#[inline(always)]
-fn otg_global() -> &'static pac::otg_fs_global::RegisterBlock {
-    unsafe { &(*pac::OTG_FS_GLOBAL::ptr()) }
-}
-
-#[inline(always)]
-fn otg_host() -> &'static pac::usb_otg_host::RegisterBlock {
-    unsafe { &(*pac::USB_OTG_HOST::ptr()) }
-}
-
-
 pub struct Channel {
     ch_index: u8,
 }
 
 impl Channel {
+    #[inline]
     unsafe fn steal(ch_index: u8) -> Self {
         Self { ch_index }
     }
 
-    pub fn get_registers(&self) -> (&FS_HCCHAR0, &FS_HCINT0, &FS_HCINTMSK0, &FS_HCTSIZ0) {
-        unsafe {
-            let offset = 8*(self.ch_index as usize);
-            (
-                &*((&otg_host().fs_hcchar0) as *const FS_HCCHAR0).add(offset),
-                &*((&otg_host().fs_hcint0) as *const FS_HCINT0).add(offset),
-                &*((&otg_host().fs_hcintmsk0) as *const FS_HCINTMSK0).add(offset),
-                &*((&otg_host().fs_hctsiz0) as *const FS_HCTSIZ0).add(offset),
-            )
-        }
+    #[inline]
+    pub fn hcchar(&self) -> Reg<regs::Hcchar, RW> {
+        REGS.hcchar(self.ch_index as usize)
     }
 
-    fn get_fifo_ptr(&self) -> *mut u32 {
-        const FIFO_SIZE: usize = 0x1000;
-        const FIFO_START: usize = 0x1000;
-        let offset = FIFO_START + (self.ch_index as usize)*FIFO_SIZE;
-        unsafe { OTG_CORE_BASE_ADDR.add(offset) as *mut u32 }
+    #[inline]
+    pub fn hcint(&self) -> Reg<regs::Hcint, RW> {
+        REGS.hcint(self.ch_index as usize)
+    }
+
+    #[inline]
+    pub fn hcintmsk(&self) -> Reg<regs::Hcintmsk, RW> {
+        REGS.hcintmsk(self.ch_index as usize)
+    }
+
+    #[inline]
+    pub fn hctsiz(&self) -> Reg<regs::Hctsiz, RW> {
+        REGS.hctsiz(self.ch_index as usize)
+    }
+
+    #[inline]
+    pub fn get_fifo(&self) -> Reg<regs::Fifo, RW> {
+        REGS.fifo(self.ch_index as usize)
     }
 
     #[inline(always)]
     pub fn new(ch_index: u8, dev_addr: u8, ep_dir: Direction, ep_number: u8, ep_type: EndpointType, max_packet_size: u16) -> Self {
-        //debug!("new channel: ch_index={}, dev_addr={}, ep_dir={:?}, ep_number={}, ep_type={:?}, mps={}",
-        //    ch_index, dev_addr, ep_dir, ep_number, ep_type, max_packet_size);
+        trace!("new channel: ch_index={}, dev_addr={}, ep_dir={:?}, ep_number={}, ep_type={:?}, mps={}",
+                ch_index, dev_addr, ep_dir, ep_number, ep_type, max_packet_size);
 
         let mut c = unsafe { Self::steal(ch_index) };
         c.init(dev_addr, ep_dir, ep_number, ep_type, max_packet_size);
@@ -85,56 +79,57 @@ impl Channel {
 
     #[inline(always)]
     fn init(&mut self, dev_addr: u8, ep_dir: Direction, ep_number: u8, ep_type: EndpointType, max_packet_size: u16) {
+        // TODO low_speed: This is used when we talk to a low_speed through a high_speed hub.
         let low_speed = false;
-        *self.interrupt_context() = ChannelInterruptContext::default();
-        unsafe {
-            let (hcchar, hcint, hcintmsk, _hctsiz) = self.get_registers();
 
-            // Clear old interrupts
-            hcint.write(|w| w.bits(0xFFFFFFFF));
+        *self.interrupt_context() = Default::default();
+        unsafe {
+
+            // Clear interrupts
+            self.hcint().write_value(regs::Hcint(0xFFFFFFFF));
 
             if ep_type == EndpointType::Isoc {
-                hcintmsk.write(|w| w
-                    .xfrcm().set_bit()
-                    .ackm().set_bit()
-                    .frmorm().set_bit()
-                    .txerrm().bit(ep_dir == Direction::In)
-                    .bberrm().bit(ep_dir == Direction::In)
-                );
+                self.hcintmsk().write(|w| {
+                    w.set_xfrcm(true);
+                    w.set_ackm(true);
+                    w.set_frmorm(true);
+                    w.set_txerrm(ep_dir == Direction::In);
+                    w.set_bberrm(ep_dir == Direction::In);
+                });
             } else {
-                hcintmsk.write(|w| w
+                self.hcintmsk().write(|w| {
                     // Transfer complete
-                    .xfrcm().set_bit()
+                    w.set_xfrcm(true);
                     // Stall response
-                    .stallm().set_bit()
+                    w.set_stallm(true);
                     // Transaction error
-                    .txerrm().set_bit()
+                    w.set_txerrm(true);
                     // Data toggle error
-                    .dterrm().set_bit()
+                    w.set_dterrm(true);
                     // NAK response
-                    .nakm().set_bit()
+                    w.set_nakm(true);
                     // Frame overrun
-                    .frmorm().bit(ep_type == EndpointType::Intr)
+                    w.set_frmorm(ep_type == EndpointType::Intr);
                     // Babble error
                     // No need to unmask register, txerr will fire.
                     // .bberrm().bit(ep_dir == Direction::In)
-                );
+                });
             }
 
             // Enable the top level host channel interrupt
-            otg_host().haintmsk.modify(|r,w| w
-                .haintm().bits(r.haintm().bits() | 1 << self.ch_index)
+            REGS.haintmsk().modify(|w|
+                w.set_haintm(w.haintm() | 1 << self.ch_index)
             );
 
-            hcchar.write(|w| w
-                .dad().bits(dev_addr)
-                .epnum().bits(ep_number)
-                .eptyp().bits(ep_type as u8)
-                .mpsiz().bits(max_packet_size)
-                .epdir().bit(ep_dir == Direction::In)
-                .oddfrm().bit(ep_type == EndpointType::Intr)
-                .lsdev().bit(low_speed)
-            );
+            self.hcchar().write(|w| {
+                w.set_dad(dev_addr);
+                w.set_epnum(ep_number);
+                w.set_eptyp(ep_type as u8);
+                w.set_mpsiz(max_packet_size);
+                w.set_epdir(ep_dir == Direction::In);
+                w.set_oddfrm(ep_type == EndpointType::Intr);
+                w.set_lsdev(low_speed);
+            });
         }
     }
 
@@ -148,7 +143,7 @@ impl Channel {
     }
 
     pub fn on_host_ch_interrupt() {
-        let mut haint = otg_host().haint.read().haint().bits();
+        let mut haint = unsafe { REGS.haint().read().haint() };
         while haint != 0 {
             let ch_index = haint.trailing_zeros() as u8;
             // Stealing is okay, the channel has been initialized as we are receiving interrupts.
@@ -158,127 +153,117 @@ impl Channel {
     }
 
     fn on_ch_interrupt(&mut self) {
-        let (_hcchar, hcint_reg, _hcintmsk, _hctsiz) = self.get_registers();
+        let hcint_reg = self.hcint();
+        let hcint = unsafe { hcint_reg.read() };
+        // Ack interrupts that we are seeing.
+        unsafe { hcint_reg.write_value(hcint) };
 
-        let hcint = hcint_reg.read();
-        unsafe { hcint_reg.write(|w| w.bits(hcint.bits())) };
-
-        if hcint.xfrc().bit_is_set() {
-            //debug!("  Transfer complete ch={}", self.ch_index);
+        if hcint.xfrc() {
+            trace!("  Transfer complete ch={}", self.ch_index);
             self.signal_event(ChannelEvent::Complete);
         }
 
-        if hcint.nak().bit_is_set() {
-            //debug!("  NAK ch={}", self.ch_index);
+        if hcint.nak() {
+            //trace!("  NAK ch={}", self.ch_index);
             self.signal_event(ChannelEvent::RetryTransaction);
         }
 
-        if hcint.txerr().bit_is_set() {
-            //debug!("  Transaction error ch={}", self.ch_index);
+        if hcint.txerr() {
+            trace!("  Transaction error ch={}", self.ch_index);
             self.signal_event(ChannelEvent::RetryTransaction);
         }
 
-        if hcint.stall().bit_is_set() {
-            //debug!("  Stall response ch={}", self.ch_index);
+        if hcint.stall() {
+            trace!("  Stall response ch={}", self.ch_index);
             self.signal_event(ChannelEvent::FatalError);
         }
 
-        if hcint.dterr().bit_is_set() {
-            //debug!("  Data toggle error ch={}", self.ch_index);
+        if hcint.dterr() {
+            trace!("  Data toggle error ch={}", self.ch_index);
             self.signal_event(ChannelEvent::FatalError);
         }
 
-        if hcint.frmor().bit_is_set() {
-            //debug!("  Frame overrrun ch={}", self.ch_index);
+        if hcint.frmor() {
+            trace!("  Frame overrrun ch={}", self.ch_index);
         }
 
-        if hcint.bberr().bit_is_set() {
+        if hcint.bberr() {
             // transaction error flag will be set
-            //debug!("  Babble error ch={}", self.ch_index);
+            trace!("  Babble error ch={}", self.ch_index);
         }
     }
 
     pub fn on_host_rx_interrupt() {
         unsafe {
-            // There's two gsrxsts registers. One read-only and one read-and-pop.
-            // We want the read-and-pop, and it's located right after the read one.
-            // Sadly, it's not defined in the register definitions.
-            // We'll do some pointer arithmetic.
-            let grxstsp = otg_global().fs_grxstsr_host().as_ptr().add(1);
-            let grxstsp = &*(grxstsp as *const pac::otg_fs_global::FS_GRXSTSR_HOST);
-            let rx_status = grxstsp.read();
-
-            let ch_index = rx_status.epnum().bits();
+            let rx_status = REGS.grxstsp_host().read();
+            let ch_index = rx_status.chnum();
             Channel::steal(ch_index).on_rx_interrupt(rx_status);
         }
     }
 
-    fn on_rx_interrupt(&mut self, rx_status: pac::otg_fs_global::fs_grxstsr_host::R) {
-        let ctx = self.interrupt_context();
-
-        /*
-        debug!("on RX fifo, ch:{}, framenum: {}, bcnt: {}, dpid: {}, pktsts: {}",
-            rx_status.epnum().bits(),
-            rx_status.frmnum().bits(), rx_status.bcnt().bits(),
-            rx_status.dpid().bits(), rx_status.pktsts().bits());
-            */
-
-        match rx_status.pktsts().bits() {
-            // IN data packet received
-            0b0010 => {
-                let num_received = rx_status.bcnt().bits() as usize;
-                //debug!("RX packet received: len={}", num_received);
-                if num_received > 0 {
-                    let mut buf = ctx.buf.take().unwrap();
-
-                    if num_received > buf.len() {
-                        // Extra data received.
-                        //debug!("Too many bytes received (len={}), shutting down channel", num_received);
-                        // Flush the RX fifo
-                        for _ in 0..(num_received+3)/4 {
-                            unsafe { self.get_fifo_ptr().read_volatile() };
-                        }
-                        self.get_registers().0.modify(|_,w| w .chena().clear_bit());
-                    } else {
-                        // Read and advance the buffer pointer.
-                        self.read_from_fifo(&mut buf[0..num_received]);
-                        buf = &mut buf[num_received..];
-
-                        // Re-enable channel if more data is to come.
-                        if !buf.is_empty() {
-                            self.get_registers().0.modify(|_,w| w .chdis().clear_bit());
-                        }
-                    }
-                    ctx.buf = Some(buf);
-                }
-
-                // A Complete/Halt event will come next.
+    fn on_rx_interrupt(&mut self, rx_status: regs::GrxstsHost) {
+        match rx_status.pktsts() {
+            vals::Pktstsh::IN_DATA_RX => {
+                let len = rx_status.bcnt() as usize;
+                trace!("ch={}, RX data received: len={}", self.ch_index, len);
+                self.on_data_rx(len);
+                // Nothing to signal.
+                // A `IN_DATA_DONE` or `CHANNEL_HALTED` event will come next.
             }
-            // IN transfer completed
-            0b0011 => {
-                //debug!("RX completed");
+            vals::Pktstsh::IN_DATA_DONE => {
+                trace!("ch={}, RX done", self.ch_index);
                 self.signal_event(ChannelEvent::Complete);
             }
             // Data toggle error
-            0b0101 => {
+            vals::Pktstsh::DATA_TOGGLE_ERR => {
+                trace!("ch={}, Data toggle error", self.ch_index);
                 // This can happen if we miss a packet, it's best to retry.
-                //debug!("RX data toggle error");
                 self.signal_event(ChannelEvent::RetryTransaction);
             }
             // Channel halted
-            0b0111 => {
-                //debug!("Channel halted. Failing RX");
+            vals::Pktstsh::CHANNEL_HALTED => {
+                trace!("ch={}, Channel halted", self.ch_index);
                 self.signal_event(ChannelEvent::FatalError);
             }
-            v => {
-                panic!("Unknown packet status: {:x}", v);
-            }
+            _ => unreachable!(),
         }
     }
 
+    fn on_data_rx(&mut self, len: usize) {
+        if len == 0 {
+            return;
+        }
+
+        let ctx = self.interrupt_context();
+        let mut buf = ctx.buf.take().unwrap();
+
+        if len > buf.len() {
+            // Extra data received. Oops.
+            debug!("ch={}, Too many bytes received (len={}), shutting down channel", self.ch_index, len);
+            // Flush the RX fifo
+            for _ in 0..(len+3)/4 {
+                unsafe { self.get_fifo().read() };
+            }
+            unsafe { self.hcchar().modify(|w| w.set_chena(false)); }
+            // We don't `signal_event`. Either a signal `Complete` (and the
+            // buffer length will be checked) or a `FatalError` will be sent
+            // because we disabled the channel.
+        } else {
+            // Read and advance the buffer pointer.
+            self.read_from_fifo(&mut buf[0..len]);
+            buf = &mut buf[len..];
+
+            // Re-enable channel if more data is to come.
+            if !buf.is_empty() {
+                unsafe { self.hcchar().modify(|w| w.set_chdis(false)); }
+            }
+        }
+        ctx.buf = Some(buf);
+    }
+
     pub fn on_host_disconnect_interrupt() {
-        let mut enabled_channels = otg_host().haintmsk.read().haintm().bits();
-        otg_host().haintmsk.write(|w| unsafe { w.haintm().bits(0) });
+        let mut enabled_channels = unsafe { REGS.haintmsk().read().haintm() };
+        unsafe { REGS.haintmsk().write_value(regs::Haintmsk(0)) };
 
         while enabled_channels != 0 {
             let ch_index = enabled_channels.trailing_zeros() as u8;
@@ -289,10 +274,13 @@ impl Channel {
     }
 
     fn stop_pending_xfer(&self) {
-        self.get_registers().0.modify(|_,w| w
-            .chdis().set_bit()
-            .chena().clear_bit()
-        );
+        unsafe {
+            self.hcchar().modify(|w| {
+                w.set_chdis(true);
+                w.set_chena(false);
+            });
+        }
+
         self.signal_event(ChannelEvent::FatalError);
     }
 
@@ -333,7 +321,7 @@ impl Channel {
 
     async fn wait_for_completion(&mut self, mut f: impl FnMut(&mut Self)) -> UsbResult<()> {
         // Ensure the channel is not being used
-        assert!(self.get_registers().0.read().chena().bit_is_clear());
+        debug_assert!(unsafe { self.hcchar().read().chena() == false });
 
         let mut num_attempts_left = NUM_XFER_ATTEMPTS;
 
@@ -343,7 +331,7 @@ impl Channel {
             // If the port is disabled (due to a USB disconnection for example),
             // make sure we don't wait as the stop_pending_xfer() function won't
             // trigger a signal (it's been reset).
-            if otg_host().fs_hprt.read().pena().bit_is_clear() {
+            if unsafe { REGS.hprt().read().pena() == false } {
                 return Err(());
             }
 
@@ -362,11 +350,11 @@ impl Channel {
     }
 
     fn read_from_fifo(&mut self, mut dst: &mut [MaybeUninit<u8>]) {
-        let src = self.get_fifo_ptr();
+        let src = self.get_fifo();
 
         while !dst.is_empty() {
             unsafe {
-                let v = src.read_volatile();
+                let v = src.read().data();
 
                 if dst.len() <= 3 {
                     if dst.len() >= 1 { *dst[0].as_mut_ptr() = (v      ) as u8 }
@@ -377,61 +365,51 @@ impl Channel {
                     (dst.as_mut_ptr() as *mut u32).write_unaligned(v);
                 }
             }
-            dst = &mut dst[mem::size_of::<u32>()..];
+            dst = &mut dst[core::mem::size_of::<u32>()..];
         }
     }
 
 
     fn write_to_non_periodic_fifo(&mut self, mut src: &[u8]) {
-        let dst = self.get_fifo_ptr();
+        let dst = self.get_fifo();
 
         // We'll be spinning until we have all the data written to the fifo.
         // Other USB stacks don't look at error. We keep pushing bytes, hopefully it doesn't block.
         while !src.is_empty() {
-            let mut space_available_in_words = otg_global().fs_gnptxsts.read().nptxfsav().bits();
-            /*
-            debug!("Writing to fifo (ch={}) src_len={:x?}, available={}",
-                self.ch_index, src.len(), space_available_in_words*4);
-            */
+            let mut space_available_in_words = unsafe { REGS.gnptxsts().read().nptxfsav() };
             while !src.is_empty() && space_available_in_words > 0 {
                 unsafe {
                     // We'll be transfering garbage if src.len mod 4 != 0,
                     // but that's okay, it's never leaving the device.
                     let v = (src.as_ptr() as *const u32).read_unaligned();
-                    dst.write_volatile(v);
+                    dst.write_value(regs::Fifo(v))
                 }
                 space_available_in_words -= 1;
-                src = &src[mem::size_of::<u32>().min(src.len())..];
+                src = &src[core::mem::size_of::<u32>().min(src.len())..];
             }
         }
     }
 
     fn prepare_channel_xfer(&mut self, packet_type: Option<PacketType>, size: usize, dir: Direction) {
         unsafe {
-            let (hcchar, _hcint, _hcintmsk, hctsiz) = self.get_registers();
-
             // Ensure the channel is not being used
-            assert!(hcchar.read().chena().bit_is_clear());
+            debug_assert!(self.hcchar().read().chena() == false);
 
             // Ensure we have the right direction
-            assert!(hcchar.read().epdir().bit() == (dir == Direction::In));
-            self.interrupt_context().event_signal.reset();
+            debug_assert!(self.hcchar().read().epdir() == (dir == Direction::In));
 
             // 1023 because the pktcnt is 10 bits in the hcchar register
             const MAX_PACKET_COUNT: usize = 1023;
 
-            let max_packet_size = hcchar.read().mpsiz().bits() as usize;
+            let max_packet_size = self.hcchar().read().mpsiz() as usize;
             let pkt_cnt = div_round_up(size, max_packet_size).clamp(1, MAX_PACKET_COUNT);
 
             // Apparently, odd frames are used for periodic endpoints,
             // but the STM32 SDK does it for all endpoints.
-            let oddfrm = otg_host().fs_hfnum.read().frnum().bits() & 1 == 1;
+            let oddfrm = REGS.hfnum().read().frnum() & 1 == 1;
 
-            /*
-            delay_ms(50);
-            debug!("Prepare XFER ch: {}, dir: {:?}, pid: {:?}, pktcnt: {}, size: {}",
+            trace!("Prepare XFER ch: {}, dir: {:?}, pid: {:?}, pktcnt: {}, size: {}",
               self.ch_index, dir, packet_type, pkt_cnt, size);
-              */
 
             // Per the documentation, in receive mode, we must configure a
             // multiple of the max_packet_size. That's kinda sucky because we
@@ -443,23 +421,24 @@ impl Channel {
                 size
             };
 
-            hctsiz.modify(|_,w| {
+            self.hctsiz().modify(|w| {
                 // When the dpid field is left alone, DATA0/1 toggle is done
                 // automatically.
                 if let Some(packet_type) = packet_type {
-                    w.dpid().bits(packet_type as u8);
+                    w.set_dpid(packet_type as u8);
                 }
 
-                w
-                .pktcnt().bits(pkt_cnt as u16)
-                .xfrsiz().bits(size as u32)
+                w.set_pktcnt(pkt_cnt as u16);
+                w.set_xfrsiz(size as u32);
             });
 
-            hcchar.modify(|_,w| w
-                .oddfrm().bit(oddfrm)
-                .chdis().clear_bit()
-                .chena().set_bit()
-            );
+            self.interrupt_context().event_signal.reset();
+
+            self.hcchar().modify(|w| {
+                w.set_oddfrm(oddfrm);
+                w.set_chdis(false);
+                w.set_chena(true);
+            });
         }
     }
 }

@@ -101,9 +101,6 @@ mod medium_priority_tasks {
     #[embassy::task]
     pub async fn usb_stack() {
         async fn usb_main(usb: &mut UsbHost) -> UsbResult<()> {
-
-            Timer::after(Duration::from_secs(60)).await;
-
             let mut fs = usb.wait_for_device::<Msc>().await?
                 .into_block_device().await?
                 .into_fatfs_controller();

@@ -98,10 +98,8 @@ impl Machine {
         //--------------------------
         // USB Host
         //--------------------------
-        gpioa.pa9.into_pull_up_input(&mut gpioa.crh);
-        let usb_host = UsbHost::new(gpioa.pa11, gpioa.pa12,
-            dp.OTG_FS_GLOBAL, dp.USB_OTG_HOST, dp.OTG_FS_PWRCLK, &mut gpioa.crh);
-
+        gpioa.pa9.into_pull_up_input(&mut gpioa.crh); // Not sure what that's for.
+        let usb_host = UsbHost::new(p.PA11, p.PA12, p.USB_OTG_FS);
 
         //--------------------------
         //  Stepper motor (Z-axis)

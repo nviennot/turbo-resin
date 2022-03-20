@@ -1,17 +1,19 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use stm32f1xx_hal::{
-    gpio::*,
-    gpio::gpioa::*,
+use embassy_stm32::{
     pac,
+    pac::otgfs::{OtgFs, regs, vals},
+    gpio::low_level::{AFType, Pin},
+    peripherals as p,
+    rcc::low_level::RccPeripheral,
 };
+pub(crate) const REGS: OtgFs = pac::USB_OTG_FS;
 
 use embassy::{
     channel::signal::Signal,
     time::{Duration, Timer},
 };
 
-use crate::drivers::gd32f307_clock::delay_ms;
 use super::{Channel, enumerate, InterfaceHandler};
 
 pub type UsbResult<T> = Result<T, ()>;
@@ -26,8 +28,6 @@ macro_rules! ensure {
 
 pub(crate) use ensure;
 
-//const NUM_USB_CHANNELS: usize = 8;
-
 // We have 320 32-bit words of FIFO SRAM (1.25KB).
 const FIFO_LEN: u16 = 320;
 // The FIFO SRAM gets partionned as we wish.
@@ -37,241 +37,243 @@ const NON_PERIODIC_TX_FIFO_LEN: u16 = 128;
 const PERIODIC_TX_FIFO_LEN: u16 = 64;
 
 pub struct UsbHost {
-    otg_global: pac::OTG_FS_GLOBAL,
-    otg_host: pac::USB_OTG_HOST,
-    otg_pwrclk: pac::OTG_FS_PWRCLK,
-
     event: Signal<Event>,
 }
 
 impl UsbHost {
     pub fn new(
-        dm: PA11<Input<Floating>>,
-        dp: PA12<Input<Floating>>,
-        otg_global: pac::OTG_FS_GLOBAL,
-        otg_host: pac::USB_OTG_HOST,
-        otg_pwrclk: pac::OTG_FS_PWRCLK,
-        gpioa_crh: &mut Cr<CRH, 'A'>,
+        dm: p::PA11,
+        dp: p::PA12,
+        _usb: p::USB_OTG_FS,
     ) -> Self {
-        // Pins are configured by default at maximum speed
-        dm.into_alternate_push_pull(gpioa_crh);
-        dp.into_alternate_push_pull(gpioa_crh);
-
-        Self::enable();
-
+        unsafe {
+            dm.set_as_af(0, AFType::OutputPushPull);
+            dp.set_as_af(0, AFType::OutputPushPull);
+        }
         let event = Signal::new();
-
-        Self { otg_global, otg_host, otg_pwrclk, event }
-    }
-
-    fn enable() {
-        let rcc = unsafe { &(*pac::RCC::ptr()) };
-        rcc.ahbenr.modify(|_,w| w.otgfsen().set_bit());
-    }
-
-    fn reset() {
-        let rcc = unsafe { &(*pac::RCC::ptr()) };
-        rcc.ahbrstr.modify(|_,w| w.otgfsrst().set_bit());
-        rcc.ahbrstr.modify(|_,w| w.otgfsrst().clear_bit());
+        Self { event }
     }
 
     pub fn init(&self) {
-        Self::reset();
+        // RCC enable/reset
+        p::USB_OTG_FS::enable();
+        p::USB_OTG_FS::reset();
 
         // We follow the code from the STM32CubeF1 SDK.
         unsafe {
             // USB_CoreInit() from the SDK
             {
-                // Select full-speed Embedded PHY
-                self.otg_host.fs_hcfg.modify(|_,w| w
-                    .fslspcs().bits(0b01)
+                // Select full-speed Embedded PHY. This is what the device will
+                // most likely support.  If we get it wrong, we pay the cost of
+                // doing an extra port reset (an extra 20ms, no big deal).
+                REGS.hcfg().modify(|w|
+                    w.set_fslspcs(vals::Speed::FULL_SPEED)
                 );
 
-                // Core Soft Reset
-                while self.otg_global.fs_grstctl.read().ahbidl().bit_is_clear() {}
-                self.otg_global.fs_grstctl.modify(|_,w| w.csrst().set_bit());
-                while self.otg_global.fs_grstctl.read().csrst().bit_is_set() {}
+
+                // The following performs a Soft Reset. It doesn't seem that it's needed.
+                // After all, we just did a hard reset via the RCC register.
+                // We changed fslsp, but that only needs a port reset, which will come.
+                /*
+                while REGS.grstctl().read().ahbidl() == false {}
+                REGS.grstctl().modify(|w| w.set_csrst(true));
+                while REGS.grstctl().read().csrst() {}
+                */
 
                 // Activate the USB Transceiver
-                // Note: It's a bit weird, it's called power down
-                self.otg_global.fs_gccfg.modify(|_,w| w.pwrdwn().set_bit());
+                // It's a bit weird, it's called power down.
+                REGS.gccfg().modify(|w| w.set_pwrdwn(true));
             }
 
             // USB_SetCurrentMode() from the SDK
             {
-                self.otg_global.fs_gusbcfg.modify(|_,w| w
+                REGS.gusbcfg().modify(|w| w
                     // Force host mode.
-                    .fhmod().set_bit()
+                    .set_fhmod(true)
                 );
-                // Wait for the current mode of operation is Host mode
-                while self.otg_global.fs_gintsts.read().cmod().bit_is_clear() {}
+                // Wait for the current mode of operation to be host mode
+                while REGS.gintsts().read().cmod() == false {}
             }
 
             // USB_HostInit() from the SDK
             {
-                // Restart the PHY Clock
-                self.otg_pwrclk.fs_pcgcctl.write(|w| w.bits(0));
+                // Restart the PHY Clock. Not sure that this is actually needed.
+                // Leaving that out.
+                /*
+                REGS.pcgcctl().write_value(regs::Pcgcctl(0));
+                */
 
                 // FIFO setup
                 {
                     assert!(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN+PERIODIC_TX_FIFO_LEN <= FIFO_LEN);
 
-                    self.otg_global.fs_grxfsiz.write(|w| w
-                        .rxfd().bits(RX_FIFO_LEN)
+                    REGS.grxfsiz().write(|w|
+                        w.set_rxfd(RX_FIFO_LEN)
                     );
 
-                    self.otg_global.fs_gnptxfsiz_host().write(|w| w
-                        .nptxfsa().bits(RX_FIFO_LEN)
-                        .nptxfd().bits(NON_PERIODIC_TX_FIFO_LEN)
-                    );
+                    REGS.hnptxfsiz().write(|w| {
+                        w.set_nptxfsa(RX_FIFO_LEN);
+                        w.set_nptxfd(NON_PERIODIC_TX_FIFO_LEN);
+                    });
 
-                    self.otg_global.fs_hptxfsiz.write(|w| w
-                        .ptxsa().bits(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN)
-                        .ptxfsiz().bits(PERIODIC_TX_FIFO_LEN)
-                    );
+                    REGS.hptxfsiz().write(|w| {
+                        w.set_ptxsa(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN);
+                        w.set_ptxfsiz(PERIODIC_TX_FIFO_LEN);
+                    });
 
                     // Flush FIFOs, it must be done, otherwise, fs_gnptxsts.nptxfsav is all garbage.
 
                     // Flush RX Fifo
-                    self.otg_global.fs_grstctl.write(|w| w.rxfflsh().set_bit());
-                    while self.otg_global.fs_grstctl.read().rxfflsh().bit_is_set() {}
+                    REGS.grstctl().write(|w| w.set_rxfflsh(true));
+                    while REGS.grstctl().read().rxfflsh() {}
 
                     // Flush all TX Fifos
-                    self.otg_global.fs_grstctl.write(|w| w .txfflsh().set_bit().txfnum().bits(0b10000));
-                    while self.otg_global.fs_grstctl.read().txfflsh().bit_is_set() {}
+                    REGS.grstctl().write(|w| {
+                        w.set_txfflsh(true);
+                        w.set_txfnum(vals::Txfnum::ALL);
+                    });
+                    while REGS.grstctl().read().txfflsh() {}
                 }
 
                 // Specify which interrupts we care about
-                self.otg_global.fs_gintmsk.write(|w| w
-                    // bit 24 is PRTIM = Host port interrupt (it's incorrectly defined as read-only in the SVD file.)
-                    .bits(1 << 24)
+                REGS.gintmsk().write(|w| {
+                    // Host port interrupt
+                    w.set_prtim(true);
                     // Receive FIFO non-empty
-                    .rxflvlm().set_bit()
+                    w.set_rxflvlm(true);
                     // Host channels
-                    .hcim().set_bit()
+                    w.set_hcim(true);
                     // Disconnected
-                    .discint().set_bit()
+                    w.set_discint(true);
                     // Incomplete periodic transfer mask
-                    .ipxfrm_iisooxfrm().set_bit()
-                )
+                    w.set_ipxfrm_iisooxfrm(true);
+                })
             }
 
             self.event.reset();
-            self.otg_global.fs_gotgctl.modify(|_,w| w.dhnpen().set_bit());
+
+            // HNP is probably needed when we do real OTG and we don't know if
+            // we are device or host yet.
+            /*
+            REGS.gotgctl().modify(|w| w.set_dhnpen(true));
+            */
 
             // HAL_HCD_Start() in the SDK
             {
                 // Vbus power
-                self.otg_host.fs_hprt.modify(|_,w| w
-                    .ppwr().set_bit()
-                );
-
-                // unmask interrupts
-                self.otg_global.fs_gahbcfg.modify(|_,w| w
-                    .gint().set_bit()
-                );
+                REGS.hprt().modify(|w| w.set_ppwr(true));
+                // Unmask interrupts
+                REGS.gahbcfg().modify(|w| w.set_gint(true));
             }
         }
     }
 
     pub fn on_interrupt(&mut self) {
-        let intr = self.otg_global.fs_gintsts.read();
+        let intr = unsafe { REGS.gintsts().read() };
         // Ack all interrupts that we see
-        unsafe { self.otg_global.fs_gintsts.write(|w| w.bits(intr.bits())) };
+        unsafe { REGS.gintsts().write_value(intr) };
 
         // Host port interrupt
-        if intr.hprtint().bit_is_set() { self.on_host_port_interrupt(); }
+        if intr.hprtint() { self.on_host_port_interrupt(); }
 
         // Rx FIFO non empty
-        if intr.rxflvl().bit_is_set() { Channel::on_host_rx_interrupt(); }
+        if intr.rxflvl() { Channel::on_host_rx_interrupt(); }
 
         // Host channel interrupt
-        if intr.hcint().bit_is_set() { Channel::on_host_ch_interrupt(); }
+        if intr.hcint() { Channel::on_host_ch_interrupt(); }
 
-        if intr.discint().bit_is_set() {
+        if intr.discint() {
             debug!("USB Disconnected");
             self.event.signal(Event::Disconnected);
             Channel::on_host_disconnect_interrupt();
         }
 
-        if intr.ipxfr_incompisoout().bit_is_set() {
+        if intr.ipxfr_incompisoout() {
             debug!("USB incomplete periodic TX");
         }
     }
 
     fn on_host_port_interrupt(&self) {
-        self.otg_host.fs_hprt.modify(|r,w| {
-            // Port detected?
-            if r.pcdet().bit_is_set() {
-                w.pcdet().set_bit();
-                self.event.signal(Event::PortConnectDetected);
-            }
+        unsafe {
+            REGS.hprt().modify(|w| {
+                // Port detected?
+                if w.pcdet() {
+                    self.event.signal(Event::PortConnectDetected);
+                }
 
-            // Port enabled?
-            if r.penchng().bit_is_set() {
-                w.penchng().set_bit();
+                // Port enabled?
+                if w.penchng() {
+                    if w.pena() {
+                        // Not clearing the port enable bit makes the core to disable
+                        // the port immedately after. Took me hours to figure this out :(
+                        // This is not what the documentation says!
+                        w.set_pena(false);
 
-                // Not clearing the port enable bit makes the core to disable
-                // the port immedately after .Took me hours to figure this out :(
-                w.pena().clear_bit();
+                        let event = self.maybe_change_port_speed(w.pspd());
+                        self.event.signal(event.unwrap_or(Event::PortEnabled));
+                    } else {
+                        debug!("Port disabled");
+                        self.event.signal(Event::Disconnected);
+                        Channel::on_host_disconnect_interrupt();
+                    }
+                }
 
-                if r.pena().bit_is_set() {
-                    self.setup_port_speed();
-                    self.event.signal(Event::PortEnabled);
-                } else {
-                    debug!("Port disabled");
+                // Port overcurrent?
+                if w.poca() {
+                    debug!("Port went overcurrent");
                     self.event.signal(Event::Disconnected);
                     Channel::on_host_disconnect_interrupt();
                 }
-            }
-
-            // Port overcurrent?
-            if r.pocchng().bit_is_set() {
-                w.pocchng().set_bit();
-                debug!("Port went overcurrent");
-                self.event.signal(Event::Disconnected);
-                Channel::on_host_disconnect_interrupt();
-            }
-
-            w
-        });
-    }
-
-    fn setup_port_speed(&self) {
-        unsafe {
-            let port_speed = self.otg_host.fs_hprt.read().pspd().bits();
-            let host_speed = self.otg_host.fs_hcfg.read().fslspcs().bits();
-
-            if port_speed != host_speed {
-                self.otg_host.fs_hcfg.modify(|_,w| w.fslspcs().bits(port_speed));
-                self.reset_port();
-            }
-
-            let hfir = match port_speed {
-                0b10 => 6000, // Low speed
-                0b01 => 48_000, // Full speed
-                v @ _ => panic!("Port speed not recognized: {}", v)
-            };
-            self.otg_host.hfir.write(|w| w.frivl().bits(hfir));
+            });
         }
     }
 
-    fn reset_port(&self) {
-        // Brings the D- D+ lines down to initiate a device reset
-        self.otg_host.fs_hprt.modify(|_,w| w.prst().set_bit());
-        // 10ms is the minimum by the USB specs. We add margins.
-        delay_ms(20);
-        self.otg_host.fs_hprt.modify(|_,w| w.prst().clear_bit());
+    /// When the port speed changes, it returns an event that indicates that the
+    /// port needs to be reset.
+    fn maybe_change_port_speed(&self, port_speed: vals::Speed) -> Option<Event> {
+        unsafe {
+            let hfir = match port_speed {
+                vals::Speed::LOW_SPEED => 6_000,
+                vals::Speed::FULL_SPEED => 48_000,
+                v @ _ => panic!("Port speed not recognized: {}", v.0)
+            };
+            REGS.hfir().write(|w| w.set_frivl(hfir));
+
+            let host_speed = REGS.hcfg().read().fslspcs();
+            if port_speed != host_speed {
+                REGS.hcfg().modify(|w| w.set_fslspcs(port_speed));
+                Some(Event::NeedPortReset)
+            } else {
+                None
+            }
+        }
+    }
+
+    async fn reset_port(&self) {
+        unsafe {
+            // Brings the D- D+ lines down to initiate a device reset
+            REGS.hprt().modify(|w| w.set_prst(true));
+            // 10ms is the minimum by the USB specs. We add margins.
+            Timer::after(Duration::from_millis(20)).await;
+            REGS.hprt().modify(|w| w.set_prst(false));
+            trace!("USB port reset");
+        }
     }
 
     async fn wait_for_event(&self, wanted_event: Event) -> UsbResult<()> {
         let event = self.event.wait().await;
         if event != wanted_event {
-            debug!("While waiting for {:?}, received {:?}", wanted_event, event);
+            trace!("While waiting for {:?}, received {:?}", wanted_event, event);
             Err(())
         } else {
             Ok(())
         }
+    }
+
+    async fn peek_event(&self) -> Event {
+        let event = self.event.wait().await;
+        self.event.signal(event);
+        event
     }
 
     pub async fn wait_for_device<T: InterfaceHandler>(&mut self) -> UsbResult<T> {
@@ -279,18 +281,28 @@ impl UsbHost {
 
         debug!("USB waiting for device");
         self.wait_for_event(Event::PortConnectDetected).await?;
-        debug!("USB device detected");
+        trace!("USB device detected");
 
         // Let the device boot. USB Specs say 200ms is enough, but some devices
         // can take longer apparently, so we'll wait a little longer.
         Timer::after(Duration::from_millis(300)).await;
 
-        self.reset_port();
+        self.reset_port().await;
+
+        // If the port speed changed, we need to reset the port.
+        if self.peek_event().await == Event::NeedPortReset {
+            self.event.reset();
+            trace!("USB port speed changed. Resetting port");
+            self.reset_port().await;
+        }
+
         self.wait_for_event(Event::PortEnabled).await?;
-        debug!("USB device enabled");
+        trace!("USB device enabled");
         Timer::after(Duration::from_millis(20)).await;
 
-        enumerate::<T>().await
+        let result = enumerate::<T>().await;
+        debug!("USB enumeation done");
+        result
     }
 }
 
@@ -299,5 +311,6 @@ impl UsbHost {
 enum Event {
     PortConnectDetected,
     PortEnabled,
+    NeedPortReset,
     Disconnected,
 }
