@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::drivers::gd32f307_clock::delay_ns;
+use crate::drivers::delay_ns;
 use core::convert::From;
 use crate::consts::touch_screen::*;
 use embassy_stm32::exti::ExtiInput;

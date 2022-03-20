@@ -9,6 +9,9 @@ pub mod touch_screen;
 pub mod zaxis;
 pub mod lcd;
 pub mod usb;
+mod delay;
+pub use delay::*;
+
 
 mod cycle_counter;
 pub use cycle_counter::*;
