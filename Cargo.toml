@@ -34,13 +34,13 @@ embedded-sdmmc = { git = "https://github.com/nviennot/embedded-sdmmc-rs.git" }
 
 [features]
 # MCUs
-gd32f307 = [
+gd32f307ve = [
     "gd32f3/gd32f307",
     "embassy-stm32/skip_clock_init",
     "embassy-stm32/gd32f307ve",
     "embassy-stm32/time-driver-tim3",
 ]
-stm32f407 = [
+stm32f407ze = [
     "embassy-stm32/stm32f407ze",
     "embassy-stm32/time-driver-tim3",
 ]
@@ -48,9 +48,9 @@ stm32f407 = [
 # Printers
 
 # Chitu L V3
-lv3 = ["stm32f407"]
+lv3 = ["stm32f407ze"]
 # Anycubic Mono 4K
-mono4k = ["gd32f307"]
+mono4k = ["gd32f307ve"]
 
 default = []
 

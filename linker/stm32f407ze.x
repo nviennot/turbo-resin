@@ -12,7 +12,7 @@ SECTIONS {
    * whole layout.
    */
 
-   /* 0x184 is the end of the not yet defined vector_table */
+   /* 0x188 is the end of the not yet defined vector_table */
    .lvgl.text ORIGIN(FLASH) + 0x188:
    {
      *liblvgl*:*(.text .text.*);

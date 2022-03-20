@@ -1,16 +1,11 @@
-#OPENOCD_INTERFACE ?= misc/openocd-jlink.cfg
-OPENOCD_INTERFACE ?= misc/openocd-stlink.cfg
-
 BUILD ?= debug
 TARGET_ELF ?= target/thumbv7em-none-eabihf/$(BUILD)/app
 BUILD_FLAGS ?=
 CARGO ?= $(HOME)/.cargo/bin/cargo
+#OPENOCD_INTERFACE ?= misc/openocd-jlink.cfg
+OPENOCD_INTERFACE ?= misc/openocd-stlink.cfg
 
 #########################################################
-
-ifeq ($(PRINTER),)
-$(error PRINTER must be defined. Valid choices: mono4k, lv3)
-endif
 
 BUILD_FLAGS += --features $(PRINTER)
 
@@ -22,29 +17,31 @@ ifeq (,$(wildcard $(CARGO)))
 	CARGO := cargo
 endif
 
-# # We get the first string in the feature list matching the $(PRINTER)
-# # variable. It's a bit gross. I wish there was a better way.
-# MCU := $(shell \
-# 	grep -A10000 '^\[features\]$$' Cargo.toml | \
-# 	grep '^$(PRINTER)\b =' | \
-# 	sed -E 's/.*\["([^"]+)".*/\1/' \
-# )
-
-ifeq ($(PRINTER),)
-$(error PRINTER must be set. Try mono4k or lv3)
-endif
+# We get the first string in the feature list matching the $(PRINTER)
+# variable. It's a bit gross. I wish there was a better way.
+MCU := $(shell \
+	grep -A10000 '^\[features\]$$' Cargo.toml | \
+	grep '^$(PRINTER)\b =' | \
+	sed -E 's/.*\["([^"]+)".*/\1/' \
+)
 
 #########################################################
 
 .PHONY: build run attach clean start_openocd start_jlink \
-	start_jlink_rtt start_probe_run_rtt restore_rom check
+	start_jlink_rtt start_probe_run_rtt restore_rom check \
+	check_printer
 
-build:
+check_printer:
+ifeq (${MCU},)
+	$(error Try with PRINTER=mono4k or PRINTER=lv3)
+endif
+
+build: check_printer
 	@# We do build first, it shows compile error messages (objdump doesn't)
 	$(CARGO) build $(BUILD_FLAGS)
 	$(CARGO) objdump -q $(BUILD_FLAGS) -- -h | ./misc/rom_stats.py
 
-check:
+check: check_printer
 	$(CARGO) check $(BUILD_FLAGS)
 
 run: build
@@ -56,17 +53,21 @@ attach:
 clean:
 	$(CARGO) clean
 
-start_openocd:
+start_openocd: check_printer
+ifeq (${MCU},stm32f407ze)
+	openocd -f ${OPENOCD_INTERFACE} -f target/stm32f4x.cfg
+else
 	openocd -f ${OPENOCD_INTERFACE} -f target/stm32f1x.cfg
+endif
 
-start_jlink:
-	JLinkGDBServer -AutoConnect 1 -Device GD32F307VE -If SWD -Speed 4000 -nogui
+start_jlink: check_printer
+	JLinkGDBServer -Device ${MCU} -If SWD -Speed 4000 -nogui
 
 start_jlink_rtt:
 	JLinkRTTClient
 
-start_probe_run_rtt:
-	probe-run --chip STM32F107RC --no-flash ${TARGET_ELF}
+start_probe_run_rtt: check_printer
+	probe-run --chip ${MCU} --no-flash ${TARGET_ELF}
 
 misc/orig-firmware.bin:
 	@echo Dump your original firmare, and place it here: $@

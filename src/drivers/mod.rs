@@ -2,7 +2,7 @@
 
 pub mod machine;
 //pub mod ext_flash;
-#[cfg(feature = "gd32f307")]
+#[cfg(feature = "gd32f307ve")]
 pub mod gd32f307_clock;
 pub mod display;
 pub mod touch_screen;

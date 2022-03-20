@@ -257,7 +257,7 @@ fn main() -> ! {
 
     let machine = {
         let p = {
-            #[cfg(feature="gd32f307")]
+            #[cfg(feature="gd32f307ve")]
             {
                 // We are doing the clock init here because of the gigadevice differences.
                 let clk = crate::drivers::gd32f307_clock::setup_clock_120m_hxtal();

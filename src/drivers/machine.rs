@@ -85,7 +85,7 @@ impl Machine {
         //--------------------------
 
         // Disable JTAG to activate pa15, pb3, and pb4 as regular GPIO.
-        #[cfg(feature="gd32f307")]
+        #[cfg(feature="gd32f307ve")]
         unsafe {
             embassy_stm32::pac::AFIO.mapr().modify(|w|
                 w.set_swj_cfg(0b010)

@@ -14,14 +14,14 @@ use std::io::Write;
 use std::path::PathBuf;
 
 fn main() {
-    #[cfg(not(any(feature = "stm32f407", feature = "gd32f307")))]
+    #[cfg(not(any(feature = "stm32f407ze", feature = "gd32f307ve")))]
     compile_error!("No printer selected. Use make PRINTER=mono4k or cargo --features=mono4k");
 
-    #[cfg(feature = "stm32f407")]
-    let mcu = "stm32f407";
+    #[cfg(feature = "stm32f407ze")]
+    let mcu = "stm32f407ze";
 
-    #[cfg(feature = "gd32f307")]
-    let mcu = "gd32f307";
+    #[cfg(feature = "gd32f307ve")]
+    let mcu = "gd32f307ve";
 
     let linker_file = format!("linker/{}.x", mcu);
     let linker_file_content = std::fs::read(&linker_file)
