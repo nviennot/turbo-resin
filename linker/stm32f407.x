@@ -13,7 +13,7 @@ SECTIONS {
    */
 
    /* 0x184 is the end of the not yet defined vector_table */
-   .lvgl.text ORIGIN(FLASH) + 0x184:
+   .lvgl.text ORIGIN(FLASH) + 0x188:
    {
      *liblvgl*:*(.text .text.*);
    } > FLASH
