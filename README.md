@@ -61,13 +61,16 @@ stick. You'll need:
 
 Install the Rust toolchain. Follow instruction in the [installation section of
 the Rust Embedded Book](https://docs.rust-embedded.org/book/intro/install.html).
-For the target, use `thumbv7em-none-eabihf`.
+For the target, use `thumbv7em-none-eabihf`. In a nutshell:
 
-Use the nightly toolchain for the project (otherwise you will have some `no_std`
-errors from `memchr`):
-
-```
-rustup override set nightly
+```bash
+curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+rustup target add thumbv7em-none-eabihf
+cargo install cargo-binutils
+# Ubuntu
+sudo apt install gdb-multiarch openocd
+# macOS
+brew install armmbed/formulae/arm-none-eabi-gcc openocd
 ```
 
 Finally, export this environment variable set to the root of the project.
@@ -86,7 +89,7 @@ git submodule update --init --recursive
 ### Build
 
 ```
-» make
+» make build PRINTER=mono4k
 cargo build --release
     Finished release [optimized + debuginfo] target(s) in 0.15s
 cargo objdump --release -- -h | ./misc/rom_stats.py

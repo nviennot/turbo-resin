@@ -7,6 +7,8 @@ OPENOCD_INTERFACE ?= misc/openocd-stlink.cfg
 
 #########################################################
 
+export DEP_LV_CONFIG_PATH := $(PWD)
+
 BUILD_FLAGS += --features $(PRINTER)
 
 ifeq ($(BUILD),release)
@@ -19,7 +21,7 @@ endif
 
 # We get the first string in the feature list matching the $(PRINTER)
 # variable. It's a bit gross. I wish there was a better way.
-MCU := $(shell \
+export MCU := $(shell \
 	grep -A10000 '^\[features\]$$' Cargo.toml | \
 	grep '^$(PRINTER)\b =' | \
 	sed -E 's/.*\["([^"]+)".*/\1/' \
