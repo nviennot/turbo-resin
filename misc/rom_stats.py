@@ -1,5 +1,6 @@
 #!/usr/bin/env python3
 import fileinput
+import os
 
 sections = []
 
@@ -26,11 +27,20 @@ sections.sort(key=lambda x: x[2])
 def KB(v):
     return v * 1024
 
-regions = [
-    {'name': 'FLASH',    'origin': 0x08000000,         'len': KB(256), 'used': 0},
-    {'name': 'FLASH_RO', 'origin': 0x08000000+KB(256), 'len': KB(256), 'used': 0},
-    {'name': 'RAM',      'origin': 0x20000000,         'len': KB(96),  'used': 0},
-]
+regions = {
+    'gd32f307ve': [
+        {'name': 'FLASH',    'origin': 0x08000000,         'len': KB(256), 'used': 0},
+        {'name': 'FLASH_RO', 'origin': 0x08000000+KB(256), 'len': KB(256), 'used': 0},
+        {'name': 'RAM',      'origin': 0x20000000,         'len': KB(96),  'used': 0},
+    ],
+    'stm32f407ze': [
+        {'name': 'FLASH', 'origin': 0x08000000, 'len': KB(512), 'used': 0},
+        {'name': 'RAM',   'origin': 0x20000000, 'len': KB(128), 'used': 0},
+    ],
+}.get(os.environ['MCU'])
+
+if regions is None:
+    raise RuntimeError("env var MCU is not set to a known value")
 
 def hsize(size, rel):
     return f"{size/1024:7.1f}K ({100*size/rel:.1f}%)"
