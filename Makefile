@@ -29,19 +29,25 @@ MCU := $(shell \
 
 .PHONY: build run attach clean start_openocd start_jlink \
 	start_jlink_rtt start_probe_run_rtt restore_rom check \
-	check_printer
+	check_printer check_submodules
 
 check_printer:
 ifeq (${MCU},)
 	$(error Try with PRINTER=mono4k or PRINTER=lv3)
 endif
 
-build: check_printer
+embassy/stm32-data/README.md:
+	git submodule update --init --recursive
+
+check_submodules: embassy/stm32-data/README.md;
+	git submodule update --recursive
+
+build: check_printer check_submodules
 	@# We do build first, it shows compile error messages (objdump doesn't)
 	$(CARGO) build $(BUILD_FLAGS)
 	$(CARGO) objdump -q $(BUILD_FLAGS) -- -h | ./misc/rom_stats.py
 
-check: check_printer
+check: check_printer check_submodules
 	$(CARGO) check $(BUILD_FLAGS)
 
 run: build
