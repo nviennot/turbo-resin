@@ -45,6 +45,7 @@ Elegoo, and Creality printers.
 ## Sponsors
 
 * [Elliot from Tiny Labs](https://github.com/tinylabs)
+* [@gnivler](https://github.com/gnivler)
 
 Thank you!
 

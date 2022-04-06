@@ -79,7 +79,7 @@ start_probe_run_rtt: check_printer
 
 misc/orig-firmware.bin:
 	@echo Dump your original firmare, and place it here: $@
-	@echo To do this, you can run `make start_openocd`, then `echo dump_image lm1_.bin 0 $$((512*1024)) | nc localhost 4444`
+	@echo To do this, you can run 'make start_openocd', then 'echo dump_image lm1_.bin 0 $$((512*1024)) | nc localhost 4444'
 	@exit 1
 
 misc/orig-firmware.elf: misc/orig-firmware.bin
