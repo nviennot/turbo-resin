@@ -35,21 +35,21 @@ export MCU := $(shell \
 
 check_printer:
 ifeq (${MCU},)
-	$(error Try with PRINTER=mono4k or PRINTER=lv3)
+	$(error Try with PRINTER=mono4k or PRINTER=lv3 PRINTER=saturn)
 endif
 
 embassy/stm32-data/README.md:
 	git submodule update --init --recursive
 
-check_submodules: embassy/stm32-data/README.md;
+check_submodules: embassy/stm32-data/README.md
 	git submodule update --recursive
 
-build: check_printer check_submodules
+build: | check_printer check_submodules
 	@# We do build first, it shows compile error messages (objdump doesn't)
 	$(CARGO) build $(BUILD_FLAGS)
 	$(CARGO) objdump -q $(BUILD_FLAGS) -- -h | ./misc/rom_stats.py
 
-check: check_printer check_submodules
+check: | check_printer check_submodules
 	$(CARGO) check $(BUILD_FLAGS)
 
 run: build
@@ -61,29 +61,30 @@ attach:
 clean:
 	$(CARGO) clean
 
-start_openocd: check_printer
+start_openocd: | check_printer
 ifeq (${MCU},stm32f407ze)
 	openocd -f ${OPENOCD_INTERFACE} -f target/stm32f4x.cfg
 else
 	openocd -f ${OPENOCD_INTERFACE} -f target/stm32f1x.cfg
 endif
 
-start_jlink: check_printer
+start_jlink: | check_printer
 	JLinkGDBServer -Device ${MCU} -If SWD -Speed 4000 -nogui
 
 start_jlink_rtt:
 	JLinkRTTClient
 
-start_probe_run_rtt: check_printer
+start_probe_run_rtt: | check_printer
 	probe-run --chip ${MCU} --no-flash ${TARGET_ELF}
 
-misc/orig-firmware.bin:
+misc/orig-firmware-$(PRINTER).bin:
 	@echo Dump your original firmare, and place it here: $@
-	@echo To do this, you can run 'make start_openocd', then 'echo dump_image lm1_.bin 0 $$((512*1024)) | nc localhost 4444'
+	@echo To do this, you can run 'make start_openocd', then:
+	@echo 'echo dump_image $@ 0 $$((512*1024)) | nc localhost 4444'
 	@exit 1
 
-misc/orig-firmware.elf: misc/orig-firmware.bin
+misc/orig-firmware-$(PRINTER).elf: misc/orig-firmware-$(PRINTER).bin
 	arm-none-eabi-objcopy -I binary -O elf32-little --rename-section .data=.text --change-address 0x08000000 $< $@
 
-restore_rom: misc/orig-firmware.elf
+restore_rom: misc/orig-firmware-$(PRINTER).elf | check_printer
 	arm-none-eabi-gdb -q -x gdb/run.gdb $<

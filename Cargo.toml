@@ -47,6 +47,8 @@ stm32f407ze = [
 
 # Printers
 
+# Elegoo Saturn
+saturn = ["stm32f407ze"]
 # Chitu L V3
 lv3 = ["stm32f407ze"]
 # Anycubic Mono 4K
