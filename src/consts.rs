@@ -1,12 +1,16 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+pub mod system {
+    pub const CLOCK_SPEED_MHZ: u32 = 168;
+}
+
 pub mod ext_flash {
-    const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
+    pub const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
 }
 
 pub mod display {
-    pub const WIDTH: u16 = 320;
-    pub const HEIGHT: u16 = 240;
+    pub const WIDTH: u16 = 480;
+    pub const HEIGHT: u16 = 320;
     pub const LVGL_BUFFER_LEN: usize = 7680; // 1/10th of the display size
 }
 

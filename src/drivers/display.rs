@@ -10,17 +10,18 @@ use embassy_stm32::peripherals as p;
 use crate::consts::display::*;
 
 pub struct Display {
-    pub reset: Output<'static, p::PC6>,
-    pub backlight: Output<'static, p::PA10>,
+    pub reset: Output<'static, p::PB12>,
+    pub backlight: Output<'static, p::PG8>,
 }
 
 impl Display {
-    // We use Bank0 (0x60000000) to address the display.
+    // We use Bank1 (0x60000000) to address the display.
+    // Bank1 PSRAM 4 selection: HADDR[27:26] = 11
     // The A16 wire is used to select the DATA or CMD register. Its address is
     // 0x00020000 = 1 << (16 + 1) (The +1 is because of the 16 bit addressing
     // mode as opposed to 8 bit).
-    const TFT_CMD:  *mut u16 = 0x6000_0000u32 as *mut u16;
-    const TFT_DATA: *mut u16 = 0x6002_0000u32 as *mut u16;
+    const TFT_CMD:  *mut u16 = 0x6c00_0000u32 as *mut u16;
+    const TFT_DATA: *mut u16 = 0x6c00_2000u32 as *mut u16;
 
     /*
     pub const FULL_SCREEN: Rectangle = Rectangle::new(
@@ -31,13 +32,14 @@ impl Display {
 
     #[inline(never)]
     pub fn new(
-        reset: p::PC6,
-        backlight: p::PA10,
+        reset: p::PB12,
+        backlight: p::PG8,
 
         output_enable: p::PD4,
         write_enable: p::PD5,
-        cs: p::PD7,
-        a16: p::PD11,
+        cs: p::PG12,
+
+        a12: p::PG2,
 
         d0: p::PD14,
         d1: p::PD15,
@@ -66,35 +68,36 @@ impl Display {
 
         unsafe {
             // PD4: EXMC_NOE: Output Enable
-            output_enable.set_as_af(0, AFType::OutputPushPull);
+            output_enable.set_as_af(12, AFType::OutputPushPull);
             // PD5: EXMC_NWE: Write enable
-            write_enable.set_as_af(0, AFType::OutputPushPull);
+            write_enable.set_as_af(12, AFType::OutputPushPull);
             // PD7: EXMC_NE0: Chip select
-            cs.set_as_af(0, AFType::OutputPushPull);
-            // A16: Selects the Command or Data register
-            a16.set_as_af(0, AFType::OutputPushPull);
+            cs.set_as_af(12, AFType::OutputPushPull);
+            // A12: Selects the Command or Data register
+            a12.set_as_af(12, AFType::OutputPushPull);
 
-            d0.set_as_af(0, AFType::OutputPushPull);
-            d1.set_as_af(0, AFType::OutputPushPull);
-            d2.set_as_af(0, AFType::OutputPushPull);
-            d3.set_as_af(0, AFType::OutputPushPull);
-            d4.set_as_af(0, AFType::OutputPushPull);
-            d5.set_as_af(0, AFType::OutputPushPull);
-            d6.set_as_af(0, AFType::OutputPushPull);
-            d7.set_as_af(0, AFType::OutputPushPull);
-            d8.set_as_af(0, AFType::OutputPushPull);
-            d9.set_as_af(0, AFType::OutputPushPull);
-            d10.set_as_af(0, AFType::OutputPushPull);
-            d11.set_as_af(0, AFType::OutputPushPull);
-            d12.set_as_af(0, AFType::OutputPushPull);
-            d13.set_as_af(0, AFType::OutputPushPull);
-            d14.set_as_af(0, AFType::OutputPushPull);
-            d15.set_as_af(0, AFType::OutputPushPull);
+            d0.set_as_af(12, AFType::OutputPushPull);
+            d1.set_as_af(12, AFType::OutputPushPull);
+            d2.set_as_af(12, AFType::OutputPushPull);
+            d3.set_as_af(12, AFType::OutputPushPull);
+            d4.set_as_af(12, AFType::OutputPushPull);
+            d5.set_as_af(12, AFType::OutputPushPull);
+            d6.set_as_af(12, AFType::OutputPushPull);
+            d7.set_as_af(12, AFType::OutputPushPull);
+            d8.set_as_af(12, AFType::OutputPushPull);
+            d9.set_as_af(12, AFType::OutputPushPull);
+            d10.set_as_af(12, AFType::OutputPushPull);
+            d11.set_as_af(12, AFType::OutputPushPull);
+            d12.set_as_af(12, AFType::OutputPushPull);
+            d13.set_as_af(12, AFType::OutputPushPull);
+            d14.set_as_af(12, AFType::OutputPushPull);
+            d15.set_as_af(12, AFType::OutputPushPull);
         }
 
+        #[cfg(feature="mono4k")]
         unsafe {
             fsmc.bcr1().write(|w| {
-                // Enable NOR Bank 0
+                // Enable Bank
                 w.set_mbken(vals::BcrMbken::ENABLED);
                 // data width: 16 bits
                 w.set_mwid(vals::BcrMwid::BITS16);
@@ -115,7 +118,33 @@ impl Display {
             });
         }
 
+        #[cfg(feature="saturn")]
+        unsafe {
+            fsmc.bcr4().write(|w| {
+                // Enable Bank
+                w.set_mbken(vals::BcrMbken::ENABLED);
+                // data width: 16 bits
+                w.set_mwid(vals::BcrMwid::BITS16);
+                // write: enable
+                w.set_wren(vals::BcrWren::ENABLED);
+            });
+
+            fsmc.btr4().write(|w| {
+                w.set_accmod(vals::BtrAccmod::A);
+                w.set_addset(10);
+                w.set_datast(10);
+            });
+        }
+
         Self { reset, backlight }
+    }
+
+    pub fn set_backlight(&mut self, value: bool) {
+        if value {
+            self.backlight.set_high()
+        } else {
+            self.backlight.set_low()
+        }
     }
 
     pub fn write_cmd(&mut self, v: u16) {
@@ -126,49 +155,80 @@ impl Display {
         unsafe { Self::TFT_DATA.write_volatile(v); }
     }
 
+    pub fn read_data(&mut self) -> u16 {
+        unsafe { Self::TFT_DATA.read_volatile() }
+    }
+
     pub fn init(&mut self) {
         // This sequence is mostly taken from the original firmware
-        delay_ms(10);
-        self.reset.set_high();
-        delay_ms(10);
         self.reset.set_low();
-        delay_ms(80);
+        delay_ms(50);
         self.reset.set_high();
         delay_ms(50);
 
-        self.cmd(0xCF, &[0x00, 0xC1, 0x30]);
-        self.cmd(0xED, &[0x64, 0x03, 0x12, 0x81]);
-        self.cmd(0xE8, &[0x85, 0x10, 0x7A]);
-        self.cmd(0xCB, &[0x39, 0x2C, 0x00, 0x34, 0x02]);
-        self.cmd(0xF7, &[0x20]);
-        self.cmd(0xEA, &[0x00,0x00]);
-        self.cmd(0xC0, &[0x1B]);
-        self.cmd(0xC1, &[0x01]);
-        self.cmd(0xC5, &[0x30, 0x30]);
-        self.cmd(0xC7, &[0xB7]);
-        self.cmd(0x3A, &[0x55]);
-        self.cmd(0x36, &[0xA8]);
-        self.cmd(0xB1, &[0x00, 0x12]);
-        self.cmd(0xB6, &[0x0A, 0xA2]);
-        self.cmd(0x44, &[0x02]);
-        self.cmd(0xF2, &[0x00]);
+        // This is just for debugging
+        {
+            let mut data = [0; 4];
+            // ID4
+            self.cmd_r(0xd3, &mut data);
+            info!("display 0xd3: {:02x?}", data);
+            // Not sure what that is
+            self.cmd_r(0xa1, &mut data);
+            info!("display 0xa1: {:02x?}", data);
+            // Read Display Identification Information (04h)
+            self.cmd_r(0x04, &mut data);
+            info!("display 0x04: {:02x?}", data);
+        }
 
-        // Gamma settings
-        self.cmd(0x26, &[0x01]);
-        self.cmd(0xE0, &[15, 42, 40, 8, 14, 8, 84, 169, 67, 10, 15, 0, 0, 0, 0]);
-        self.cmd(0xE1, &[0, 21, 23, 7, 17, 6, 43, 86, 60, 5, 16, 15, 63, 63, 15]);
+        #[cfg(feature="mono4k")]
+        {
+            self.cmd(0xCF, &[0x00, 0xC1, 0x30]);
+            self.cmd(0xED, &[0x64, 0x03, 0x12, 0x81]);
+            self.cmd(0xE8, &[0x85, 0x10, 0x7A]);
+            self.cmd(0xCB, &[0x39, 0x2C, 0x00, 0x34, 0x02]);
+            self.cmd(0xF7, &[0x20]);
+            self.cmd(0xEA, &[0x00,0x00]);
+            self.cmd(0xC0, &[0x1B]);
+            self.cmd(0xC1, &[0x01]);
+            self.cmd(0xC5, &[0x30, 0x30]);
+            self.cmd(0xC7, &[0xB7]);
+            self.cmd(0x3A, &[0x55]);
+            self.cmd(0x36, &[0xA8]);
+            self.cmd(0xB1, &[0x00, 0x12]);
+            self.cmd(0xB6, &[0x0A, 0xA2]);
+            self.cmd(0x44, &[0x02]);
+            self.cmd(0xF2, &[0x00]);
+
+            // Gamma settings
+            self.cmd(0x26, &[0x01]);
+            self.cmd(0xE0, &[15, 42, 40, 8, 14, 8, 84, 169, 67, 10, 15, 0, 0, 0, 0]);
+            self.cmd(0xE1, &[0, 21, 23, 7, 17, 6, 43, 86, 60, 5, 16, 15, 63, 63, 15]);
+        }
+
+        #[cfg(feature="saturn")]
+        {
+            self.cmd(0xe0, &[0x00, 0x03, 0x0c, 0x09, 0x17, 0x09, 0x3e, 0x89, 0x49, 0x08, 0x0d, 0x0a, 0x13, 0x15, 0x0f]);
+            self.cmd(0xe1, &[0x00, 0x11, 0x15, 0x03, 0x0f, 0x05, 0x2d, 0x34, 0x41, 0x02, 0x0b, 0x0a, 0x33, 0x37, 0x0f]);
+            self.cmd(0xc0, &[0x17, 0x15]);
+            self.cmd(0xc1, &[0x41]);
+            self.cmd(0xc5, &[0x00, 0x12, 0x80]);
+            self.cmd(0x3a, &[0x55]);
+            self.cmd(0xb0, &[0x00]);
+            self.cmd(0xb1, &[0xa0]);
+            self.cmd(0xb4, &[0x02]);
+            self.cmd(0xe9, &[0x00]);
+            self.cmd(0xf7, &[0xa9, 0x51, 0x2c, 0x82]);
+            self.cmd(0xb6, &[0x02, 0x02]);
+            self.cmd(0x36, &[0xe8]);
+        }
 
         // Sleep Out
         self.cmd(0x11, &[]);
-        delay_ms(8);
 
         // Display ON
         self.cmd(0x29, &[]);
-        delay_ms(1);
 
         self.fill_screen(0);
-
-        delay_ms(110);
     }
 
     pub fn write_data_as_two_u8(&mut self, v: u16) {
@@ -180,6 +240,13 @@ impl Display {
         self.write_cmd(cmd);
         for a in args {
             self.write_data(*a);
+        }
+    }
+
+    pub fn cmd_r(&mut self, cmd: u16, data: &mut [u16]) {
+        self.write_cmd(cmd);
+        for a in data {
+            *a = self.read_data();
         }
     }
 

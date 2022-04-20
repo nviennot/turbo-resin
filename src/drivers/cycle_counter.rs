@@ -1,6 +1,8 @@
 use embassy::util::Forever;
 use cortex_m::peripheral::DWT;
 
+use crate::consts::system::*;
+
 static CYCLE_COUNTER: Forever<CycleCounter> = Forever::new();
 
 pub struct CycleCounter {
@@ -33,6 +35,6 @@ pub fn count_cycles<R>(mut f: impl FnMut() -> R) -> R {
     let ret = f();
     let end_cycles = read_cycles();
     let total_cycles = end_cycles.wrapping_sub(start_cycles);
-    debug!("Cycles: {}, {}ms", total_cycles, total_cycles/120_000);
+    debug!("Cycles: {}, {}ms", total_cycles, total_cycles/(CLOCK_SPEED_MHZ*1000));
     ret
 }

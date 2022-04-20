@@ -14,11 +14,11 @@ use crate::drivers::{
 pub struct Machine {
     //pub ext_flash: ExtFlash,
     pub display: Display,
-    pub touch_screen: TouchScreen,
-    pub stepper: zaxis::MotionControl,
-    pub lcd: Lcd,
-    pub z_bottom_sensor: zaxis::BottomSensor,
-    pub usb_host: UsbHost,
+    //pub touch_screen: TouchScreen,
+    //pub stepper: zaxis::MotionControl,
+    //pub lcd: Lcd,
+    //pub z_bottom_sensor: zaxis::BottomSensor,
+    //pub usb_host: UsbHost,
 }
 
 use embassy_stm32::{Peripherals, gpio::Input};
@@ -49,16 +49,17 @@ impl Machine {
 
         //let _notsure = gpioa.pa6.into_push_pull_output(&mut gpioa.crl);
         let mut display = Display::new(
-            p.PC6, p.PA10,
-            p.PD4, p.PD5, p.PD7, p.PD11,
+            p.PB12, p.PG8,
+            p.PD4, p.PD5, p.PG12, p.PG2,
             p.PD14, p.PD15, p.PD0, p.PD1, p.PE7, p.PE8,
             p.PE9, p.PE10, p.PE11, p.PE12, p.PE13,
             p.PE14, p.PE15, p.PD8, p.PD9, p.PD10,
             p.FSMC,
         );
         display.init();
+        display.backlight.set_high();
 
-
+        /*
         //--------------------------
         //  Touch screen
         //--------------------------
@@ -103,7 +104,8 @@ impl Machine {
         );
 
         let stepper = zaxis::MotionControl::new(drv8424, p.TIM7);
+        */
 
-        Self { display, touch_screen, stepper, lcd, z_bottom_sensor, usb_host }
+        Self { display /*, touch_screen, stepper, lcd, z_bottom_sensor, usb_host*/ }
     }
 }

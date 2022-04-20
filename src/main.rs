@@ -38,7 +38,7 @@ use embassy::{
     interrupt::InterruptExt,
     blocking_mutex::CriticalSectionMutex as Mutex,
 };
-use embassy_stm32::{Config, interrupt};
+use embassy_stm32::{Config, interrupt, time::U32Ext};
 
 use embedded_sdmmc::Mode;
 
@@ -235,7 +235,7 @@ mod low_priority_tasks {
             });
 
             lvgl.run_tasks();
-            display.backlight.set_high();
+            display.set_backlight(true);
         }
     }
 }
@@ -257,6 +257,7 @@ fn main() -> ! {
 
     let machine = {
         let p = {
+            let mut config = Config::default();
             #[cfg(feature="gd32f307ve")]
             {
                 // We are doing the clock init here because of the gigadevice differences.
@@ -264,26 +265,36 @@ fn main() -> ! {
                 unsafe { embassy_stm32::rcc::set_freqs(clk) };
             }
 
+            #[cfg(feature="stm32f407ze")]
+            {
+                config.rcc.hse = Some(20.mhz().into());
+                config.rcc.sys_ck = Some(168.mhz().into());
+                config.rcc.pll48 = true;
+            }
             // Note: TIM3 is taken for time accounting. It's configurable in Cargo.toml
-            embassy_stm32::init(Config::default())
+            embassy_stm32::init(config)
         };
 
         let cp = cortex_m::Peripherals::take().unwrap();
         Machine::new(cp, p)
     };
 
+    /*
     Z_AXIS.put(zaxis::MotionControlAsync::new(
         SharedWithInterrupt::new(machine.stepper),
         machine.z_bottom_sensor,
     ));
+    */
 
     //let lcd_channel = LcdChannel::new();
 
     let (lvgl, display) = lvgl_init(machine.display);
 
+    /*
     USB_HOST.put(machine.usb_host);
     let lcd = LCD.put(machine.lcd);
     debug!("FPGA version: {:x}", lcd.get_version());
+    */
 
     TASK_RUNNER.put(TaskRunner::new());
 
@@ -309,16 +320,16 @@ fn main() -> ! {
     {
 
         let lvgl_ticks = lvgl.ticks();
-        let touch_screen = machine.touch_screen;
+        //let touch_screen = machine.touch_screen;
         let irq = interrupt::take!(CAN1_RX0);
         irq.set_priority(interrupt::Priority::P6);
         static EXECUTOR_MEDIUM: Forever<InterruptExecutor<interrupt::CAN1_RX0>> = Forever::new();
         let executor = EXECUTOR_MEDIUM.put(InterruptExecutor::new(irq));
         executor.start(|spawner| {
-            spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
+            //spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
             spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
             spawner.spawn(medium_priority_tasks::main_task()).unwrap();
-            spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
+            //spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
 
             //spawner.spawn(medium_priority_tasks::lcd_task(lcd_receiver)).unwrap();
         });
