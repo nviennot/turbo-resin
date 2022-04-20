@@ -22,7 +22,7 @@ pub struct File<'b, D: BlockDevice, T: TimeSource> {
     fs: &'b mut Controller<D,T>,
 }
 
-impl<'b, D: BlockDevice, T: TimeSource> File<'b, D, T> {
+impl<'b, D: BlockDevice + 'static, T: TimeSource + 'static> File<'b, D, T> {
     pub async fn new(
         fs: &'b mut Controller<D,T>,
         volume: &'b mut Volume,
@@ -39,7 +39,7 @@ impl<'b, D: BlockDevice, T: TimeSource> File<'b, D, T> {
     impl_write_obj!(File<'b, D, T>);
 }
 
-impl<'b, D: BlockDevice, T: TimeSource> Read for File<'b, D, T> {
+impl<'b, D: BlockDevice + 'static, T: TimeSource + 'static> Read for File<'b, D, T> {
     type Error = Error<D::Error>;
     type ReadFuture<'a> = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
 
@@ -61,7 +61,7 @@ impl<'b, D: BlockDevice, T: TimeSource> Read for File<'b, D, T> {
     }
 }
 
-impl<'b, D: BlockDevice, T: TimeSource> ReadPartial for File<'b, D, T> {
+impl<'b, D: BlockDevice + 'static, T: TimeSource + 'static> ReadPartial for File<'b, D, T> {
     type Error = Error<D::Error>;
     type ReadPartialFuture<'a> = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
 
@@ -75,7 +75,7 @@ impl<'b, D: BlockDevice, T: TimeSource> ReadPartial for File<'b, D, T> {
     }
 }
 
-impl<'b, D: BlockDevice, T: TimeSource> Write for File<'b, D, T> {
+impl<'b, D: BlockDevice + 'static, T: TimeSource + 'static> Write for File<'b, D, T> {
     type Error = Error<D::Error>;
     type WriteFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
