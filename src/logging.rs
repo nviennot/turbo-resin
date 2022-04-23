@@ -21,6 +21,8 @@ static LOGGER: Logger = Logger;
 
 pub fn init_logging() {
     rtt_target::rtt_init_print!(NoBlockSkip, 4096);
+    //rtt_target::rtt_init_print!(BlockIfFull, 4096);
+
     log::set_logger(&LOGGER).unwrap();
     log::set_max_level(LevelFilter::Trace);
     info!("init");

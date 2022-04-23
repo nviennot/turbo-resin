@@ -5,143 +5,98 @@ use embassy_stm32::pac::SPI1;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
 use embassy_stm32::rcc::Clocks;
-use embassy_stm32::spi::{Config, Spi};
 use embassy::time::{Duration, Timer};
 use embassy_stm32::rcc::low_level::RccPeripheral;
 
-use crate::drivers::delay_us;
+use crate::consts::lcd::*;
 
-use super::Drawing;
+use crate::drivers::{delay_us, delay_ms};
+use crate::util::bitbang_spi::Spi;
 
 pub type Color = u8;
 
+
 pub struct Lcd {
-    cs: Output<'static, p::PA4>,
-    spi: Spi<'static, p::SPI1, p::DMA1_CH3, p::DMA1_CH2>,
+    cs: Output<'static, p::PA15>,
+    spi: Spi<p::PC7, p::PG3, p::PC6, SPI_FREQ_HZ>,
 }
 
 impl Lcd {
     pub fn new(
-        reset: p::PD12,
-        cs: p::PA4,
-        sck: p::PA5,
-        miso: p::PA6,
-        mosi: p::PA7,
-        spi1: p::SPI1,
-        dma_rx: p::DMA1_CH2,
-        dma_tx: p::DMA1_CH3,
+        //reset: p::PF8, // TODO confirm this is reset. I have no idea in reality
+        cs: p::PA15,
+        clk: p::PC7,
+        miso: p::PC6,
+        mosi: p::PG3,
     ) -> Self {
         // forget to avoid the pin to get back in the input state.
-        core::mem::forget(Output::new(reset, Level::Low, Speed::Low));
-
+        //core::mem::forget(Output::new(reset, Level::Low, Speed::Low));
         let cs = Output::new(cs, Level::High, Speed::Medium);
-
-        let cfg = Config::default();
-        let spi = Spi::new(spi1, sck, mosi, miso, dma_tx, dma_rx, p::SPI1::frequency(), cfg);
-
+        let clk = Output::new(clk, Level::Low, Speed::Medium);
+        let mosi = Output::new(mosi, Level::Low, Speed::Medium);
+        let miso = Input::new(miso, Pull::None);
+        let spi = Spi::new(clk, mosi, miso);
         Self { cs, spi }
     }
 
-    pub const COLS: u16 = 3840;
-    pub const ROWS: u16 = 2400;
+    pub fn test(&mut self) {
+        self.cmd(Command::MaskDisplay);
+        delay_ms(10);
+        self.cmd(Command::Unknown03);
 
-    pub const DEFAULT_PALETTE: [u16; 16] = [
-        0x00, 0x11, 0x22, 0x33, 0x44, 0x55, 0x66, 0x77,
-        0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
-    ];
-
-    pub fn draw(&mut self) -> Drawing {
-        Drawing::new(self)
-    }
-
-    pub fn start_drawing_raw(&mut self) {
-        self.cs.set_low();
-        delay_us(1);
-
-        // The FPGA seems a little buggy.
-        // It won't take the command well. Apparently, we have to send it twice.
-        // Otherwise, 2/3 of a second frame won't render. There's a strange bug.
-        self.cmd(Command::StartDrawing, None, None);
-        delay_us(10);
-        self.cs.set_high();
-        delay_us(10);
-        self.cs.set_low();
-        delay_us(10);
-        self.cmd(Command::StartDrawing, None, None);
-    }
-
-    #[inline(always)]
-    pub fn draw_raw(&mut self, packed_pixels: u16) {
-        // We use this small piece of code, it's much faster than the SPI API.
-        // Note that the SPI is correctly configured (16bits frames) due to the
-        // previous commands.
-        unsafe {
-            while !SPI1.sr().read().txe() {}
-            SPI1.dr().write(|w| w.set_dr(packed_pixels));
+        if let Ok((w,h)) = self.get_resolution() {
+            debug!("LCD resolution is {}x{}", w, h);
+        } else {
+            debug!("Failed to get LCD resolution");
         }
+
+        self.cmd(Command::UnmaskDisplay);
     }
 
-    pub fn stop_drawing_raw(&mut self) {
-        unsafe {
-            while SPI1.sr().read().bsy() {}
-        }
+    pub fn get_resolution(&mut self) -> Result<(u16, u16), ()> {
+        self.cs.set_low();
+        self.cmd(Command::GetResolution);
+
+        self.wait_for_reply()?;
+        let width = self.spi.xfer(0u16).to_be();
+        let height = self.spi.xfer(0u16).to_be();
         self.cs.set_high();
+
+        Ok((width, height))
     }
 
-    pub fn get_version(&mut self) -> u32 {
-        let mut rx = [0_u16; 2];
-        self.cmd(Command::GetVersion, None, Some(&mut rx));
-        let version = (rx[1] as u32) << 16 | rx[0] as u32;
-        return version
+    fn wait_for_reply(&mut self) -> Result<(), ()> {
+        // 3 is abitrary. In the original firmware, they look for the reply
+        // header within ~11 bytes. It's a bit silly though.
+        for _ in 0..3 {
+            if self.spi.xfer(0u16) == REPLY_HEADER {
+                return Ok(())
+            }
+        }
+        return Err(());
     }
 
-    pub fn set_palette(&mut self, map: &[u16; 16]) {
-        self.cmd(Command::SetPalette, Some(map), None);
-    }
-
-    pub fn get_palette(&mut self) -> [u16; 16] {
-        let mut map = [0_u16; 16];
-        self.cmd(Command::GetPalette, None, Some(&mut map));
-        return map;
-    }
-
-    fn cmd(&mut self, cmd: Command, tx: Option<&[u16]>, rx: Option<&mut [u16]>) {
+    fn cmd(&mut self, cmd: Command) {
         let toggle_cs = self.cs.is_set_high();
+        if toggle_cs { self.cs.set_low(); }
 
-        if toggle_cs {
-            self.cs.set_low();
-            delay_us(1);
-        }
+        self.spi.xfer((CMD_PREFIX << 8) | cmd as u16);
 
-        self.spi.blocking_write(&[cmd as u16, 0]).unwrap();
-
-        if let Some(tx) = tx {
-            self.spi.blocking_write(tx).unwrap();
-        }
-
-        if let Some(rx) = rx {
-            self.spi.blocking_transfer_in_place(rx).unwrap();
-        }
-
-        if toggle_cs {
-            delay_us(1);
-            self.cs.set_high();
-        }
+        if toggle_cs { self.cs.set_high(); }
     }
 }
 
+const CMD_PREFIX: u16 = 0xfe;
+const REPLY_HEADER: u16 = 0xfbfd;
+
 #[derive(Debug, Clone, Copy)]
-#[repr(u16)]
+#[repr(u8)]
 enum Command {
-    GetVersion = 0xF0,
-    StartDrawing = 0xFB,
-
-    SetPalette = 0xF1,
-    GetPalette = 0xF2,
-
-    /*
-    0xF3, // sends 18 u16, essentially a range(1,16) / (num)
-    0xF4, // receives 18 u16
-    0xFC, // sends 16 u16, zeroed
-    */
+    MaskDisplay = 0x00,
+    Unknown03 = 0x03,
+    GetResolution = 0x04,
+    UnmaskDisplay = 0x08,
+    Unknown10 = 0x10,
+    Unknown20 = 0x20,
+    StartDrawing = 0xfd,
 }

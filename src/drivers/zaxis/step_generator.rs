@@ -6,10 +6,10 @@
 // See http://annals.fih.upt.ro/pdf-full/2013/ANNALS-2013-3-06.pdf
 // I prefer it to compared to https://www.embedded.com/generate-stepper-motor-speed-profiles-in-real-time/
 
-use crate::consts::zaxis::{
+use crate::{consts::zaxis::{
     hardware::*,
     stepper::*,
-};
+}, drivers::delay_cycles};
 
 const TIMER_FREQ: f32 = STEP_TIMER_FREQ as f32;
 const MAX_STEP_MULTIPLIER: u32 = DRIVER_MICROSTEPS;
@@ -142,7 +142,7 @@ impl Iterator for StepGenerator {
             // Respect the lower bound of the number of cycles this function takes.
             // It's useful to do the computation during the pulse of the STEP
             // pin, which has a minimum timing constraint.
-            cortex_m::asm::delay(45);
+            delay_cycles(45);
             self.n = 0;
             return None;
         }
@@ -152,7 +152,7 @@ impl Iterator for StepGenerator {
 
         let next_ci = if self.n == 0 {
             // See comment above for an explaination of this delay.
-            cortex_m::asm::delay(30);
+            delay_cycles(30);
             // self.step_multiplier is always 1 when starting, so this is correct.
             self.c0
         } else {

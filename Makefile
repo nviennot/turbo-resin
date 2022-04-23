@@ -58,6 +58,9 @@ run: build
 attach:
 	arm-none-eabi-gdb -q -x gdb/attach.gdb ${TARGET_ELF}
 
+attach_bare:
+	arm-none-eabi-gdb -q -x gdb/attach.gdb
+
 clean:
 	$(CARGO) clean
 

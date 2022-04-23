@@ -1,0 +1,217 @@
+PD13 Output high speed state=1 (possibly paired with PG3, not sure)
+
+PG1 Output medium speed state=0
+PG10 Output medium speed state=0
+PF14 Output medium speed state=1
+
+PG7 Output medium speed state=0
+
+PG9 Output medium speed state=1
+
+PF1 Input pull-down state=0
+PF0 Input pull-down state=0
+
+PE0 Output medium speed state=1
+
+A0 Output medium speed state=0
+PA3 Input pull-up state=1
+PA4 Output medium speed state=0
+
+PB0 Input state=0
+PC3 Input state=0
+
+PB2 Input state=0
+
+PC0 Input state=1
+PC2 Input state=1
+
+
+PC8 Input state=1
+PC9 Input state=1
+PC10 Input state=1
+PC11 Input state=1
+PC12 Input state=1
+PC14 Input state=1
+PC15 Input state=1
+
+PD2 Input state=1
+PD3 Output very-high speed state=1
+PD6 Output medium speed state=0
+
+
+PE1 Input state=1
+PE3 Input state=1
+PE4 Input state=1
+PE6 Input state=1
+PF2 Input pull-down state=0
+PF3 Input pull-down state=0
+PF4 Input pull-down state=0
+PF5 Input pull-down state=0
+PF6 Input pull-down state=0
+PF7 Input pull-down state=0
+PF11 Input state=1
+PF12 Input state=1
+
+PF13 Output medium speed state=0
+
+PG5 Output medium speed state=1
+PG6 Input pull-up state=1
+
+USART1, seems to be a console:
+  PA9 Alternate AF7 high speed state=0 (tx)
+  PA10 Alternate AF7 high speed state=0 (rx)
+
+SPI2, touch screen?:
+  PD11 Output low speed state=1 (cs?)
+  PB13 Alternate AF5 low speed state=0 (sck)
+  PB14 Alternate AF5 low speed state=0 (miso) ----> touch detected at times
+  PB15 Alternate AF5 low speed state=0 (mosi)
+
+stepper motor:
+  PF15 Output medium speed state=0 (dir)
+  PA6 Output medium speed state=0 (step)
+  PB1 Output medium speed state=0 (maybe in this group??)
+  PD12 Output medium speed state=1 (maybe in this group??)
+
+lcd panel:
+  PA15 Output medium speed state=1 CS
+  PC7 Output medium speed state=1. CLOCK
+  PG3 Output medium speed state=0. (MOSI)
+  PC6 Input pull-up state=1        (MISO)
+
+  FPGA config:
+    PF8 Output medium speed state=0 (clk)
+    PF9 Output medium speed state=0 (mosi)
+    PG4 Output medium speed state=1 (reset)
+    PE2 Input pull-up state=1 (ready1)
+    PE5 Input pull-up state=1 (ready2)
+
+  0x424282a4 -> PF1 output
+  0x424282a0 -> PF0 output
+  0x42430290 -> PG4 output
+  0x42420208 -> PE2 input
+  0x42420214 -> PE5 input
+
+  0x08036238 -> send and receive
+  0x080340e8 -> send
+
+  0x0804e058 -> lcd_send_bytes
+  0x0804de4c -> lcd_send_bytes_inner
+  r1 -> ptr, r2 -> size
+
+  p/x *(char*)$r1@$r2
+  set print repeats 0
+  set print elements unlimited
+
+  when sending bytes, they like to send the first 256 bytes and then the rest.
+  (essentially, toggling cs after the first 256 bytes).
+
+  cs = 0
+  for each byte {
+    for bit in byte {
+      sleep(10.cycles)
+      clock = 0
+      mosi = bit
+      sleep(10.cycles)
+      clock = 1
+    }
+  }
+  cs = 1
+
+  to read, send 0xfe, and read on MISO.
+
+
+
+  PF10 Output medium speed state=1 (could be part of that group)
+
+ETH:
+  PA1 Alternate AF11 very-high speed state=0
+  PA2 Alternate AF11 very-high speed state=0
+  PA7 Alternate AF11 very-high speed state=0
+  PC1 Alternate AF11 very-high speed state=0
+  PC4 Alternate AF11 very-high speed state=0
+  PC5 Alternate AF11 very-high speed state=0
+  PG11 Alternate AF11 very-high speed state=0
+  PG13 Alternate AF11 very-high speed state=0
+  PG14 Alternate AF11 very-high speed state=0
+
+TIM1_CH1:
+  prescaler: 1295
+  arr: 1295
+  ccr1: 648
+  pwm: 50%
+  PA8 Alternate AF1 medium speed state=0
+
+USB:
+  PA11 Alternate AF10 very-high speed state=0
+  PA12 Alternate AF10 very-high speed state=0
+
+debug port:
+  PA13 Alternate AF0 very-high speed state=0
+  PA14 Alternate AF0 low speed state=0
+
+SPI3: (spi-flash)
+  PG15 Output medium speed state=1 (cs)
+  PB3 Alternate AF6 medium speed state=0 (sck)
+  PB4 Alternate AF6 medium speed state=0 (miso)
+  PB5 Alternate AF6 medium speed state=0 (mosi)
+
+TIM4_CH1 (probably UV power):
+  TIM4: prescaler: 100
+  arr: 8400
+  ccr1: 8400
+  100% pwm?
+  PB6 Alternate AF2 medium speed state=0
+
+External eeprom:
+  PB7 Output medium speed state=1 (cs)
+  PB8 Output medium speed state=1 (clk)
+  PB9 Output open-drain medium speed state=1 (data?)
+
+USART3:
+  PB10 Alternate AF7 high speed state=0 (tx)
+  PB11 Alternate AF7 high speed state=0 (rx)
+
+fan switch:
+  PD7 Output medium speed state=1
+
+UV switch:
+  PG0 Output medium speed state=0
+
+zaxis bottom sensor:
+  PC13 Input state=1
+
+display:
+  PB12 Output medium speed state=1 (reset or cs)
+  PG8 Output medium speed state=1 (backlight)
+
+  PD0 Alternate AF12 low speed state=0
+  PD1 Alternate AF12 low speed state=0
+  PD4 Alternate AF12 low speed state=0
+  PD5 Alternate AF12 low speed state=0
+  PD8 Alternate AF12 low speed state=0
+  PD9 Alternate AF12 low speed state=0
+  PD10 Alternate AF12 low speed state=0
+  PD14 Alternate AF12 low speed state=0
+  PD15 Alternate AF12 low speed state=0
+  PE7 Alternate AF12 low speed state=0
+  PE8 Alternate AF12 low speed state=0
+  PE9 Alternate AF12 low speed state=0
+  PE10 Alternate AF12 low speed state=0
+  PE11 Alternate AF12 low speed state=0
+  PE12 Alternate AF12 low speed state=0
+  PE13 Alternate AF12 low speed state=0
+  PE14 Alternate AF12 low speed state=0
+  PE15 Alternate AF12 low speed state=0
+  PG2 Alternate AF12 low speed state=0
+  PG12 Alternate AF12 low speed state=0
+
+EXTI on PF11 and PC13
+
+cargo run -- --remote localhost:2331 --ignore PA1,PA2,PA7,PC1,PC4,PC5,PG11,PG13,PG14,PB12,PG8,PD0,PD1,PD4,PD5,PD8,PD9,PD10,PD14,PD15,PE7,PE8,PE9,PE10,PE11,PE12,PE13,PE14,PE15,PG2,PG12,PA11,PA12,PB13,PB14,PB15
+
+
+/*
+bitstream:
+  size = 0x35bdf
+*/

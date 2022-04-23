@@ -98,6 +98,7 @@ mod medium_priority_tasks {
     }
     */
 
+    /*
     #[embassy::task]
     pub async fn usb_stack() {
         async fn usb_main(usb: &mut UsbHost) -> UsbResult<()> {
@@ -179,6 +180,7 @@ mod medium_priority_tasks {
             Timer::after(Duration::from_millis(100)).await
         }
     }
+    */
 
     #[embassy::task]
     pub async fn touch_screen_task(mut touch_screen: TouchScreen) {
@@ -252,6 +254,78 @@ fn lvgl_init(display: RawDisplay) -> (Lvgl, Display<RawDisplay>) {
     (lvgl, display)
 }
 
+use embassy_stm32::pac;
+
+// f(port, values)
+fn iter_port_reg_changes(old_value: u32, new_value: u32, stride: u8, mut f: impl FnMut(u8, u8)) {
+    let mut changes = old_value ^ new_value;
+    let stride_mask = 0xFF >> (8 - stride);
+    while changes != 0 {
+        let right_most_bit = changes.trailing_zeros() as u8;
+        let port = right_most_bit / stride;
+        if port <= 16 {
+            let v = (new_value >> (port*stride)) as u8 & stride_mask;
+            f(port, v);
+        }
+        changes &= !(stride_mask as u32) << (port*stride);
+    }
+}
+
+/*
+struct Gpio {
+    letter: char,
+    port: pac::gpio::Gpio,
+
+    mask_ignore: u16,
+    idr: u32,
+}
+
+impl Gpio {
+    pub fn new(letter: char, port: pac::gpio::Gpio) -> Self {
+        Self { letter, port, idr: 0, mask_ignore: 0, }
+    }
+
+    fn ignore(mut self, pin: u8) -> Self {
+        self.mask_ignore |= 1 << pin;
+        self
+    }
+
+    fn pin_ignore(&self, pin: u8) -> bool {
+        self.mask_ignore & (1 << pin) != 0
+    }
+
+    pub fn refresh(&mut self) {
+        let new_idr = unsafe { self.port.idr().read().0 };
+            iter_port_reg_changes(self.idr, new_idr, 1, |pin, v| {
+                if !self.pin_ignore(pin) {
+                    debug!("P{}{} input={}", self.letter, pin, v);
+                }
+            });
+        self.idr = new_idr;
+    }
+}
+
+fn monitor_ports() {
+    unsafe {
+        let mut ports = [
+            //Gpio::new('A', pac::GPIOA).ignore(13).ignore(14).ignore(1),
+            Gpio::new('B', pac::GPIOB),
+            //Gpio::new('C', pac::GPIOC),
+            //Gpio::new('D', pac::GPIOD),
+            //Gpio::new('E', pac::GPIOE),
+            //Gpio::new('F', pac::GPIOF),
+            //Gpio::new('G', pac::GPIOG),
+        ];
+
+        loop {
+            for port in &mut ports {
+                port.refresh();
+            }
+        }
+    }
+}
+*/
+
 fn main() -> ! {
     logging::init_logging();
 
@@ -269,6 +343,8 @@ fn main() -> ! {
             {
                 config.rcc.hse = Some(20.mhz().into());
                 config.rcc.sys_ck = Some(168.mhz().into());
+                // apb1 max speed is 42 mhz
+                // apb2 max speed is 84 mhz
                 config.rcc.pll48 = true;
             }
             // Note: TIM3 is taken for time accounting. It's configurable in Cargo.toml
@@ -292,9 +368,12 @@ fn main() -> ! {
 
     /*
     USB_HOST.put(machine.usb_host);
-    let lcd = LCD.put(machine.lcd);
-    debug!("FPGA version: {:x}", lcd.get_version());
     */
+
+    let lcd = LCD.put(machine.lcd);
+    lcd.test();
+
+    //debug!("FPGA version: {:x}", lcd.get_version());
 
     TASK_RUNNER.put(TaskRunner::new());
 
@@ -320,13 +399,13 @@ fn main() -> ! {
     {
 
         let lvgl_ticks = lvgl.ticks();
-        //let touch_screen = machine.touch_screen;
+        let touch_screen = machine.touch_screen;
         let irq = interrupt::take!(CAN1_RX0);
         irq.set_priority(interrupt::Priority::P6);
         static EXECUTOR_MEDIUM: Forever<InterruptExecutor<interrupt::CAN1_RX0>> = Forever::new();
         let executor = EXECUTOR_MEDIUM.put(InterruptExecutor::new(irq));
         executor.start(|spawner| {
-            //spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
+            spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
             spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
             spawner.spawn(medium_priority_tasks::main_task()).unwrap();
             //spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();

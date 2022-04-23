@@ -18,7 +18,7 @@ set print asm-demangle on
 source ./repos/PyCortexMDebug/scripts/gdb.py
 #svd_load ./misc/gd32f307.svd
 #svd_load ./misc/stm32f107.svd
-svd_load ./misc/stm32f407b.svd
+svd_load ./misc/stm32f407.svd
 
 
 # Print 5 instructions every time we break.

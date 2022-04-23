@@ -67,6 +67,7 @@ For the target, use `thumbv7em-none-eabihf`. In a nutshell:
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 rustup target add thumbv7em-none-eabihf
+rustup component add llvm-tools-preview
 cargo install cargo-binutils
 # Ubuntu
 sudo apt install gdb-multiarch openocd

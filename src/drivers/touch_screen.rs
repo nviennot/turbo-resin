@@ -7,6 +7,10 @@ use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
 use embassy::time::{Duration, Timer};
+use embassy_stm32::spi::{Config, Spi};
+use embassy_stm32::time::U32Ext;
+
+use crate::consts::display::*;
 
 
 // The scale doesn't really matter. It's just to avoid using floats as we are dealing with small values.
@@ -15,14 +19,6 @@ const PRESSURE_THRESHOLD_VALUE: u16 = (PRESSURE_SCALE as f32 * PRESSURE_THRESHOL
 
 // There's an application note that can be useful to follow for getting good
 // results https://www.ti.com/lit/an/sbaa036/sbaa036.pdf
-
-pub struct ADS7846 {
-    cs: Output<'static, p::PC7>,
-    sck: Output<'static, p::PC8>,
-    miso: Input<'static, p::PC9>,
-    mosi: Output<'static, p::PA8>,
-    touch_detected: ExtiInput<'static, p::PA9>,
-}
 
 /// Raw data coming out of the device
 #[derive(Default, Debug)]
@@ -53,26 +49,19 @@ impl TouchScreen {
 
     pub async fn get_next_touch_event(&mut self) -> Option<TouchEvent> {
         loop {
-            {
-                // We do the had_touch_event check after we register the wait
-                // for touch future. This is so we avoid a race when checking
-                // for the touch detection to return the None event, and
-                // blocking in wait_for_touch_detected.
-                let touch_detected_fut = self.device.wait_for_touch_detected();
-                futures::pin_mut!(touch_detected_fut);
-                if futures::poll!(&mut touch_detected_fut).is_pending() {
-                    if self.had_touch_event {
-                        self.had_touch_event = false;
-                        return None
-                    }
-                    touch_detected_fut.await;
-                }
+            let touch_event = self.get_stable_sample().await;
+
+            if touch_event.is_some() {
+                self.had_touch_event = true;
+                return touch_event;
             }
 
-            if let Some(touch_event) = self.get_stable_sample().await {
-                self.had_touch_event = true;
-                return Some(touch_event);
+            if self.had_touch_event {
+                self.had_touch_event = false;
+                return None;
             }
+
+            Timer::after(Duration::from_millis(SLEEP_DELAY_MS)).await;
         }
     }
 
@@ -81,12 +70,8 @@ impl TouchScreen {
         let mut last_samples: [TouchEvent; NUM_STABLE_SAMPLES as usize] = Default::default();
 
         loop {
-            // The touch line should be active during the entirety of the sampling.
-            if !self.device.is_touch_detected() {
-                return None;
-            }
-
-            let sample = self.device.read_packet().into();
+            // If we get a single bad packet, we bail.
+            let sample = self.device.read_packet().try_into().ok()?;
             last_samples[(num_samples % NUM_STABLE_SAMPLES) as usize] = sample;
 
             // If we wrap, we will be in the same state as if we just received a pen
@@ -135,24 +120,47 @@ impl TouchScreen {
     }
 }
 
-impl From<Packet> for TouchEvent {
-    fn from(p: Packet) -> Self {
-        const MAX_X: u16 = 1 << 12;
+impl TryFrom<Packet> for TouchEvent {
+    type Error = ();
 
-        let (x,y) = (p.y,p.x);
-        let x = MAX_X - x;
-        let x = (x/11).saturating_sub(36);
-        let y = (y/15).saturating_sub(15);
+    fn try_from(p: Packet) -> Result<Self, Self::Error> {
+        const MAX: u16 = 1 << 12;
+        let (mut x, mut y) = (MAX-p.y,p.x);
+
+        #[cfg(feature="saturn")]
+        {
+            #[inline]
+            fn scale(v: u16, old_min: u16, old_max: u16, new_min: u16, new_max: u16) -> Result<u16, ()> {
+                let (v, old_min, old_max, new_min, new_max) =
+                    (v as i32, old_min as i32, old_max as i32, new_min as i32, new_max as i32);
+
+                if (old_min..old_max).contains(&v) {
+                    let v = (v - old_min) * (new_max - new_min) / (old_max - old_min) + new_min;
+                    Ok(v as u16)
+                } else {
+                    Err(())
+                }
+            }
+
+            x = scale(x, TOP_LEFT.0, BOTTOM_RIGHT.0, 0, WIDTH-1)?;
+            y = scale(y, TOP_LEFT.1, BOTTOM_RIGHT.1, 0, HEIGHT-1)?;
+        }
+
+        #[cfg(feature="mono4k")]
+        {
+            x = (x/11).saturating_sub(36);
+            y = (y/15).saturating_sub(15);
+        }
 
         let z = if p.z1 > 1 {
             // Equation (2) in the manual
             ((p.z2 as u32) * (p.x as u32) /
-             (p.z1 as u32 * (MAX_X as u32 / PRESSURE_SCALE as u32))) as u16
+             (p.z1 as u32 * (MAX as u32 / PRESSURE_SCALE as u32))) as u16
         } else {
-            100
+            return Err(());
         };
 
-        Self { x, y, z }
+        Ok(Self { x, y, z })
     }
 }
 
@@ -166,30 +174,26 @@ pub fn into_lvgl_event(e: &Option<TouchEvent>) -> lvgl::core::TouchPad {
 }
 
 
+pub struct ADS7846 {
+    cs: Output<'static, p::PD11>,
+    spi: Spi<'static, p::SPI2, p::DMA1_CH4, p::DMA1_CH3>,
+}
+
 impl ADS7846 {
     pub fn new(
-        cs: p::PC7,
-        sck: p::PC8,
-        miso: p::PC9,
-        mosi: p::PA8,
-        touch_detected: p::PA9,
-        exti9: p::EXTI9,
+        cs: p::PD11,
+        sck: p::PB13,
+        miso: p::PB14,
+        mosi: p::PB15,
+        spi: p::SPI2,
+        dma_rx: p::DMA1_CH3,
+        dma_tx: p::DMA1_CH4,
     ) -> Self {
         let cs = Output::new(cs, Level::High, Speed::Medium);
-        let sck = Output::new(sck, Level::Low, Speed::Medium);
-        let miso = Input::new(miso, Pull::None);
-        let mosi = Output::new(mosi, Level::Low, Speed::Medium);
-        let touch_detected = ExtiInput::new(Input::new(touch_detected, Pull::Up), exti9);
+        let cfg = Config::default();
+        let spi = Spi::new(spi, sck, mosi, miso, dma_tx, dma_rx, 2.mhz(), cfg);
 
-        Self { cs, sck, miso, mosi, touch_detected }
-    }
-
-    fn is_touch_detected(&self) -> bool {
-        self.touch_detected.is_low()
-    }
-
-    async fn wait_for_touch_detected(&mut self) {
-        self.touch_detected.wait_for_low().await
+        Self { cs, spi }
     }
 
     // Returns (x,y) coordinates if a touch is detected
@@ -230,39 +234,9 @@ impl ADS7846 {
         self.exchange_data(0)
     }
 
-    fn exchange_data(&mut self, mut tx: u8) -> u8 {
-        // Timings are specified in Table VI. from the ADS7846 datasheet
-        let mut rx: u8 = 0;
-
-        if tx & 0x80 != 0 {
-            self.mosi.set_high();
-        } else {
-            self.mosi.set_low();
-        }
-        delay_ns(200);
-
-        for _ in 0..8 {
-            // mosi is captured by the ADS7846 device on this clock rise
-            // it should be stable for at least 10ns before a clock rise. (2 instructions)
-            self.sck.set_high();
-            delay_ns(200);
-            // miso is set after the clock falling by the device
-            self.sck.set_low();
-
-            tx <<= 1;
-            if tx & 0x80 != 0 {
-                self.mosi.set_high();
-            } else {
-                self.mosi.set_low();
-            }
-            delay_ns(200);
-
-            rx <<= 1;
-            if self.miso.is_high() {
-                rx |= 1;
-            }
-        }
-
-        rx
+    fn exchange_data(&mut self, tx: u8) -> u8 {
+        let mut read = [0];
+        let _ = self.spi.blocking_transfer(&mut read, &[tx]);
+        read[0]
     }
 }

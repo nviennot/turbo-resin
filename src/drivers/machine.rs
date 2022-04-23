@@ -1,22 +1,22 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use crate::drivers::{
-    //ext_flash::ExtFlash,
+    ext_flash::ExtFlash,
     display::Display,
     touch_screen::TouchScreen,
     zaxis,
-    lcd::Lcd,
+    lcd::{Lcd, LcdFpga},
     CycleCounter,
     touch_screen::*,
-    usb::UsbHost,
+    usb::UsbHost, delay_ms,
 };
 
 pub struct Machine {
-    //pub ext_flash: ExtFlash,
+    pub ext_flash: ExtFlash,
     pub display: Display,
-    //pub touch_screen: TouchScreen,
+    pub touch_screen: TouchScreen,
+    pub lcd: Lcd,
     //pub stepper: zaxis::MotionControl,
-    //pub lcd: Lcd,
     //pub z_bottom_sensor: zaxis::BottomSensor,
     //pub usb_host: UsbHost,
 }
@@ -35,13 +35,49 @@ impl Machine {
         //  External flash
         //--------------------------
 
+        let mut ext_flash = ExtFlash::new(
+            p.PG15, p.PB3, p.PB4, p.PB5, p.SPI3, p.DMA1_CH2, p.DMA1_CH5
+        ).expect("Failed to initialize the external spi flash");
+
+
         /*
-        let ext_flash = ExtFlash::new(
-            gpiob.pb12, gpiob.pb13, gpiob.pb14, gpiob.pb15,
-            dp.SPI2,
-            &clocks, &mut gpiob.crh
-        );
-        */
+            use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
+            core::mem::forget(Output::new(p.PA0 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PA4 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PA5 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PA6 ,  Level::Low, Speed::Low));
+            //core::mem::forget(Output::new(p.PA15,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PB1 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PB7 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PB8 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PB9 ,  Level::High, Speed::Low));
+            //core::mem::forget(Output::new(p.PB12,  Level::High, Speed::Low));
+            //core::mem::forget(Output::new(p.PC7 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PD3 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PD6 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PD7 ,  Level::High, Speed::Low));
+            //core::mem::forget(Output::new(p.PD11,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PD12,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PD13,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PE0 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PF8 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PF9 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PF10,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PF13,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PF14,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PF15,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PG0 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PG1 ,  Level::Low, Speed::Low));
+            //core::mem::forget(Output::new(p.PG3 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PG4 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PG5 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PG7 ,  Level::Low, Speed::Low));
+            //core::mem::forget(Output::new(p.PG8 ,  Level::High, Speed::Low));
+            core::mem::forget(Output::new(p.PG9 ,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PG10,  Level::Low, Speed::Low));
+            core::mem::forget(Output::new(p.PG15,  Level::High, Speed::Low));
+            */
+
 
         //--------------------------
         //  TFT display
@@ -59,23 +95,21 @@ impl Machine {
         display.init();
         display.backlight.set_high();
 
-        /*
         //--------------------------
         //  Touch screen
         //--------------------------
         let touch_screen = TouchScreen::new(
-            ADS7846::new(p.PC7, p.PC8, p.PC9, p.PA8, p.PA9, p.EXTI9)
+            ADS7846::new(p.PD11, p.PB13, p.PB14, p.PB15, p.SPI2, p.DMA1_CH3, p.DMA1_CH4)
         );
 
         //--------------------------
         // LCD Panel
         //--------------------------
-        let lcd = Lcd::new(
-            p.PD12,
-            p.PA4, p.PA5, p.PA6, p.PA7,
-            p.SPI1, p.DMA1_CH2, p.DMA1_CH3,
-        );
+        let lcd_fpga = LcdFpga::new(p.PF9, p.PF8, p.PG4, p.PE2, p.PE5);
+        lcd_fpga.upload_bitstream(&mut ext_flash);
+        let lcd = Lcd::new(p.PA15, p.PC7, p.PC6, p.PG3);
 
+        /*
         //--------------------------
         // USB Host
         //--------------------------
@@ -106,6 +140,6 @@ impl Machine {
         let stepper = zaxis::MotionControl::new(drv8424, p.TIM7);
         */
 
-        Self { display /*, touch_screen, stepper, lcd, z_bottom_sensor, usb_host*/ }
+        Self { display , touch_screen, lcd, ext_flash, /*stepper, z_bottom_sensor, usb_host*/ }
     }
 }

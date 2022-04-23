@@ -5,7 +5,7 @@ target/
 repos/
 
 .DS_Store
-misc/orig-firmware.elf
+misc/orig-firmware*
 
 # editor files
 .vscode/*
