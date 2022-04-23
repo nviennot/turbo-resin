@@ -35,13 +35,17 @@ embedded-sdmmc = { git = "https://github.com/nviennot/embedded-sdmmc-rs.git" }
 
 [features]
 # MCUs
+stm32f1 = []
+stm32f4 = []
 gd32f307ve = [
+    "stm32f1",
     "gd32f3/gd32f307",
     "embassy-stm32/skip_clock_init",
     "embassy-stm32/gd32f307ve",
     "embassy-stm32/time-driver-tim3",
 ]
 stm32f407ze = [
+    "stm32f4",
     "embassy-stm32/stm32f407ze",
     "embassy-stm32/time-driver-tim3",
 ]

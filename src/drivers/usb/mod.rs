@@ -14,3 +14,6 @@ pub use msc::*;
 
 mod msc_block_device;
 pub use msc_block_device::*;
+
+mod errors;
+pub use errors::*;

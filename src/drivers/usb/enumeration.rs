@@ -4,7 +4,7 @@ use bitflags::bitflags;
 use core::{mem::{self, MaybeUninit}, slice};
 use heapless::Vec;
 
-use super::{ensure, Channel, EndpointType, Direction, PacketType, UsbResult};
+use super::{ensure, Channel, EndpointType, Direction, PacketType, UsbResult, UsbError};
 
 use crate::util::io::{Read,Write};
 
@@ -13,77 +13,83 @@ const CONFIGURATION_DESCRIPTOR_BUFFER_SIZE: usize = 256;
 const MAX_INTERFACES: usize = 2;
 
 unsafe fn consume<T>(buf: &mut &[MaybeUninit<u8>]) -> UsbResult<T> {
-    ensure!(buf.len() >= mem::size_of::<T>());
+    ensure!(buf.len() >= mem::size_of::<T>(), UsbError::InvalidDescriptor);
     // We make a copy because of potential alignment issues.
     let r = (buf.as_ptr() as *const T).read_unaligned();
     *buf = &buf[mem::size_of::<T>()..];
     Ok(r)
 }
 
-pub async fn enumerate<H: InterfaceHandler>() -> UsbResult<H> {
-    trace!("USB enumeration starting");
-    const DEV_ADDR: u8 = 1;
-    let mut ctrl = {
-        let mut ctrl = ControlPipe::new(0, 8);
-        let dd = ctrl.get_descriptor::<DeviceDescriptorPartial>(0).await?;
-        let mps = dd.max_packet_size0 as u16;
-        ctrl.set_address(DEV_ADDR).await?;
-        ControlPipe::new(DEV_ADDR, mps)
-    };
+// We put Clone/copy because we can re-enumerate a device. It's okay.
+#[derive(Clone, Copy)]
+pub struct DetectedDevice;
 
-    let num_configurations = {
-        let dd = ctrl.get_descriptor::<DeviceDescriptor>(0).await?;
-        //debug!("{:#?}", dd);
-        dd.num_configurations
-    };
-
-    for config_index in 0..(num_configurations as u16) {
-        // We must allocate an array of constant size.
-        let mut buf = [MaybeUninit::<u8>::uninit(); CONFIGURATION_DESCRIPTOR_BUFFER_SIZE];
-        let mut full_cd_buf = {
-            // We need to retrieve all descriptors. The length of all descriptors
-            // is stored in the configuration descriptor (total_len).
-            let total_len = {
-                let cd = ctrl.get_descriptor::<ConfigurationDescriptor>(config_index).await?;
-                cd.total_len
-            };
-
-            ensure!(total_len as usize <= buf.len());
-            let buf = &mut buf[0..total_len as usize];
-            ctrl.request_bytes_in(
-                ControlPipe::STD_DEV,
-                Request::GetDescriptor,
-                (ConfigurationDescriptor::TYPE as u16) << 8,
-                config_index,
-                buf,
-            ).await?;
-            &buf[..]
+impl DetectedDevice {
+    pub async fn enumerate<H: InterfaceHandler>(self) -> UsbResult<H> {
+        trace!("USB enumeration starting");
+        const DEV_ADDR: u8 = 1;
+        let mut ctrl = {
+            let mut ctrl = ControlPipe::new(0, 8, 1, 2);
+            let dd = ctrl.get_descriptor::<DeviceDescriptorPartial>(0).await?;
+            let mps = dd.max_packet_size0 as u16;
+            ctrl.set_address(DEV_ADDR).await?;
+            ControlPipe::new(DEV_ADDR, mps, 0, 1)
         };
 
-        unsafe {
-            let config = consume::<ConfigurationDescriptor>(&mut full_cd_buf)?;
-            //debug!("{:#?}", config);
+        let num_configurations = {
+            let dd = ctrl.get_descriptor::<DeviceDescriptor>(0).await?;
+            //debug!("{:#?}", dd);
+            dd.num_configurations
+        };
 
-            for _ in 0..config.num_interfaces {
-                let interface = consume::<InterfaceDescriptor>(&mut full_cd_buf)?;
+        for config_index in 0..(num_configurations as u16) {
+            // We must allocate an array of constant size.
+            let mut buf = [MaybeUninit::<u8>::uninit(); CONFIGURATION_DESCRIPTOR_BUFFER_SIZE];
+            let mut full_cd_buf = {
+                // We need to retrieve all descriptors. The length of all descriptors
+                // is stored in the configuration descriptor (total_len).
+                let total_len = {
+                    let cd = ctrl.get_descriptor::<ConfigurationDescriptor>(config_index).await?;
+                    cd.total_len
+                };
 
-                let endpoints = (0..interface.num_endpoints)
-                    .map(|_| consume::<EndpointDescriptor>(&mut full_cd_buf))
-                    .collect::<UsbResult<Vec<_, MAX_INTERFACES>>>()?;
+                ensure!(total_len as usize <= buf.len(), UsbError::DescriptorTooLarge);
+                let buf = &mut buf[0..total_len as usize];
+                ctrl.request_bytes_in(
+                    ControlPipe::STD_DEV,
+                    Request::GetDescriptor,
+                    (ConfigurationDescriptor::TYPE as u16) << 8,
+                    config_index,
+                    buf,
+                ).await?;
+                &buf[..]
+            };
 
-                //debug!("{:#?} {:#?}", interface, &endpoints);
+            unsafe {
+                let config = consume::<ConfigurationDescriptor>(&mut full_cd_buf)?;
+                trace!("{:#?}", config);
 
-                if let Ok(prepare_output) = H::prepare(DEV_ADDR, &interface, &endpoints) {
-                    ctrl.set_configuration(config.configuration_value).await?;
-                    //debug!("Configuration {} set", config.configuration_value);
-                    return Ok(H::new(ctrl, prepare_output));
+                for _ in 0..config.num_interfaces {
+                    let interface = consume::<InterfaceDescriptor>(&mut full_cd_buf)?;
+
+                    let endpoints = (0..interface.num_endpoints)
+                        .map(|_| consume::<EndpointDescriptor>(&mut full_cd_buf))
+                        .collect::<UsbResult<Vec<_, MAX_INTERFACES>>>()?;
+
+                    trace!("{:#?} {:#?}", interface, &endpoints);
+
+                    if let Ok(prepare_output) = H::prepare(DEV_ADDR, &interface, &endpoints) {
+                        ctrl.set_configuration(config.configuration_value).await?;
+                        trace!("Configuration {} set", config.configuration_value);
+                        return Ok(H::new(ctrl, prepare_output));
+                    }
                 }
             }
         }
-    }
 
-    debug!("No suitable interfaces found");
-    Err(())
+        debug!("No suitable interfaces found");
+        Err(UsbError::InterfaceNotFound)
+    }
 }
 
 pub trait InterfaceHandler: Sized {
@@ -105,9 +111,9 @@ impl ControlPipe {
     const STD_DEV: RequestType = RequestType::TYPE_STANDARD.union(RequestType::RECIPIENT_DEVICE);
 
     /// The control pipe always uses channel 0 and 1
-    pub fn new(dev_addr: u8, max_packet_size: u16) -> Self {
-        let ch_in  = Channel::new(0, dev_addr, Direction::In,  0, EndpointType::Control, max_packet_size);
-        let ch_out = Channel::new(1, dev_addr, Direction::Out, 0, EndpointType::Control, max_packet_size);
+    pub fn new(dev_addr: u8, max_packet_size: u16, ch_in: u8, ch_out: u8) -> Self {
+        let ch_in  = Channel::new(ch_in, dev_addr, Direction::In,  0, EndpointType::Control, max_packet_size);
+        let ch_out = Channel::new(ch_out, dev_addr, Direction::Out, 0, EndpointType::Control, max_packet_size);
         Self { ch_in, ch_out }
     }
 
@@ -150,8 +156,9 @@ impl ControlPipe {
             // TODO It's not clear if we need to force it to Data1, or we should be toggling.
             // try with a small max_packet_size.
             self.ch_in.with_pid(PacketType::Data1).read(buf).await?;
+            //self.ch_in.with_pid(PacketType::Data1).read(buf).await?;
         }
-        self.ch_out.with_pid(PacketType::Data1).write_obj(&pkt).await?;
+        self.ch_out.with_pid(PacketType::Data1).write(&[]).await?;
 
         Ok(())
     }

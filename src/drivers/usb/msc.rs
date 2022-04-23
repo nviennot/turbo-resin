@@ -8,7 +8,7 @@ use embassy::{
 
 use super::{Channel, EndpointType, Direction, ControlPipe, ensure,
     InterfaceHandler, InterfaceDescriptor, EndpointDescriptor, UsbResult,
-    RequestType, Request, MscBlockDevice};
+    UsbError, RequestType, Request, MscBlockDevice};
 
 use crate::util::io::{Read, Write};
 
@@ -34,11 +34,12 @@ impl InterfaceHandler for Msc {
         if_desc: &InterfaceDescriptor,
         ep_descs: &[EndpointDescriptor],
     ) -> UsbResult<Self::PrepareOutput> {
-        ensure!(if_desc.interface_class == USB_MSC_CLASS);
-        ensure!(if_desc.interface_subclass == USB_MSC_SCSI_SUBCLASS);
-        ensure!(if_desc.interface_protocol == USB_MSC_BOT_PROTOCOL);
+        ensure!(if_desc.interface_class == USB_MSC_CLASS, UsbError::InvalidDescriptor);
+        ensure!(if_desc.interface_subclass == USB_MSC_SCSI_SUBCLASS, UsbError::InvalidDescriptor);
+        ensure!(if_desc.interface_protocol == USB_MSC_BOT_PROTOCOL, UsbError::InvalidDescriptor);
 
-        ensure!(ep_descs.len() == 2);
+
+        ensure!(ep_descs.len() == 2, UsbError::InvalidDescriptor);
 
         // 0x80 means input
         let (ep_in_desc, ep_out_desc) = if ep_descs[0].endpoint_address & 0x80 != 0 {
@@ -47,11 +48,11 @@ impl InterfaceHandler for Msc {
             (&ep_descs[1], &ep_descs[0])
         };
 
-        ensure!(ep_in_desc.endpoint_address & 0x80 != 0);
-        ensure!(ep_out_desc.endpoint_address & 0x80 == 0);
+        ensure!(ep_in_desc.endpoint_address & 0x80 != 0, UsbError::InvalidDescriptor);
+        ensure!(ep_out_desc.endpoint_address & 0x80 == 0, UsbError::InvalidDescriptor);
 
-        ensure!(ep_in_desc.attributes == EndpointType::Bulk as u8);
-        ensure!(ep_out_desc.attributes == EndpointType::Bulk as u8);
+        ensure!(ep_in_desc.attributes == EndpointType::Bulk as u8, UsbError::InvalidDescriptor);
+        ensure!(ep_out_desc.attributes == EndpointType::Bulk as u8, UsbError::InvalidDescriptor);
 
         let data_in = Channel::new(2, dev_addr, Direction::In, ep_in_desc.endpoint_address & 0x0F,
             EndpointType::Bulk, ep_in_desc.max_packet_size);
@@ -98,7 +99,7 @@ impl Msc {
             Timer::after(Duration::from_millis(1)).await;
         }
         debug!("MSC command retried too many times. Abort");
-        Err(())
+        Err(UsbError::BotRequestFailed)
     }
 
     pub async fn test_unit_ready(&mut self) -> UsbResult<()> {

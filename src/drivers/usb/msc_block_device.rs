@@ -5,7 +5,7 @@ use core::future::Future;
 use core::mem;
 use crate::drivers::usb::Msc;
 
-use super::UsbResult;
+use super::{UsbResult, UsbError};
 
 pub struct MscBlockDevice {
     block_count:  u32,
@@ -13,7 +13,7 @@ pub struct MscBlockDevice {
 }
 
 impl BlockDevice for MscBlockDevice {
-    type Error = ();
+    type Error = UsbError;
 
     type ReadFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
     type WriteFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
@@ -71,7 +71,7 @@ impl MscBlockDevice {
             Ok(Self { block_count, msc: RefCell::new(msc) })
         } else {
             debug!("Disk has a block size of {}. Not supported", block_size);
-            Err(())
+            Err(UsbError::InvalidBlockSize)
         }
     }
 

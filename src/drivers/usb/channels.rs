@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use core::mem::MaybeUninit;
+use core::{mem::MaybeUninit, convert::From};
 
 use embassy_stm32::pac::{
     otgfs::{regs, vals},
@@ -9,22 +9,23 @@ use embassy_stm32::pac::{
 
 use crate::util::io::{Read, Write, impl_read_obj, impl_write_obj};
 use core::future::Future;
-use embassy::channel::signal::Signal;
-use super::{REGS, UsbResult};
+use embassy::{channel::signal::Signal, time::{Timer, Duration}};
+use super::{REGS, UsbResult, UsbError};
 
 const NUM_CHANNELS: usize = 8;
  // There can be many NAKs. It's okay to do _that_ many retries, it's fast.
-const NUM_XFER_ATTEMPTS: usize = 100_000;
+const NUM_XFER_NAK_ATTEMPTS: usize = 100_000;
+const NUM_XFER_ATTEMPTS: usize = 5;
 
 struct ChannelInterruptContext {
-    event_signal: Signal<ChannelEvent>,
+    xfer_signal: Signal<UsbResult<()>>,
     buf: Option<&'static mut [MaybeUninit<u8>]>,
 }
 
 impl Default for ChannelInterruptContext {
     fn default() -> Self {
         Self {
-            event_signal: Signal::new(),
+            xfer_signal: Signal::new(),
             buf: None,
         }
     }
@@ -69,9 +70,7 @@ impl Channel {
 
     #[inline(always)]
     pub fn new(ch_index: u8, dev_addr: u8, ep_dir: Direction, ep_number: u8, ep_type: EndpointType, max_packet_size: u16) -> Self {
-        trace!("new channel: ch_index={}, dev_addr={}, ep_dir={:?}, ep_number={}, ep_type={:?}, mps={}",
-                ch_index, dev_addr, ep_dir, ep_number, ep_type, max_packet_size);
-
+        assert!((ch_index as usize) < NUM_CHANNELS);
         let mut c = unsafe { Self::steal(ch_index) };
         c.init(dev_addr, ep_dir, ep_number, ep_type, max_packet_size);
         c
@@ -79,11 +78,17 @@ impl Channel {
 
     #[inline(always)]
     fn init(&mut self, dev_addr: u8, ep_dir: Direction, ep_number: u8, ep_type: EndpointType, max_packet_size: u16) {
+        trace!("new channel: ch_index={}, dev_addr={}, ep_dir={:?}, ep_number={}, ep_type={:?}, mps={}",
+                self.ch_index, dev_addr, ep_dir, ep_number, ep_type, max_packet_size);
+
         // TODO low_speed: This is used when we talk to a low_speed through a high_speed hub.
         let low_speed = false;
 
         *self.interrupt_context() = Default::default();
         unsafe {
+            // If we were to re-use this channel, disabling it ensures that this channel is ready.
+            self.disable();
+            self.wait_disabled();
 
             // Clear interrupts
             self.hcint().write_value(regs::Hcint(0xFFFFFFFF));
@@ -121,6 +126,10 @@ impl Channel {
                 w.set_haintm(w.haintm() | 1 << self.ch_index)
             );
 
+            self.hctsiz().write(|w| {
+                w.set_dpid(PacketType::Data0 as u8)
+            });
+
             self.hcchar().write(|w| {
                 w.set_dad(dev_addr);
                 w.set_epnum(ep_number);
@@ -138,8 +147,22 @@ impl Channel {
         unsafe { INTERRUPT_CONTEXTS[self.ch_index as usize].assume_init_mut() }
     }
 
-    fn signal_event(&self, event: ChannelEvent) {
-        self.interrupt_context().event_signal.signal(event);
+    fn disable(&self) {
+        unsafe {
+            self.hcchar().modify(|w| {
+                w.set_chdis(true);
+                // Yes, we must activate the channel to be able to disable it.
+                w.set_chena(true);
+            });
+        }
+    }
+
+    fn wait_disabled(&self) {
+        unsafe { while self.hcchar().read().chena() {} }
+    }
+
+    fn signal_xfer_result(&self, event: UsbResult<()>) {
+        self.interrupt_context().xfer_signal.signal(event);
     }
 
     pub fn on_host_ch_interrupt() {
@@ -158,39 +181,50 @@ impl Channel {
         // Ack interrupts that we are seeing.
         unsafe { hcint_reg.write_value(hcint) };
 
-        if hcint.xfrc() {
-            trace!("  Transfer complete ch={}", self.ch_index);
-            self.signal_event(ChannelEvent::Complete);
-        }
+        let result = if hcint.xfrc() {
+            trace!("  ch={} Transfer complete", self.ch_index);
+            Ok(())
+        } else {
+            let mut err: Option<UsbError> = None;
 
-        if hcint.nak() {
-            //trace!("  NAK ch={}", self.ch_index);
-            self.signal_event(ChannelEvent::RetryTransaction);
-        }
+            // It's a possibility that multiple error flags are set.
+            // For example, the babble error comes with a transaction error.
+            // The other of the if statements matter so we get the most specific error.
 
-        if hcint.txerr() {
-            trace!("  Transaction error ch={}", self.ch_index);
-            self.signal_event(ChannelEvent::RetryTransaction);
-        }
+            if hcint.nak() {
+                trace!("  ch={} NAK", self.ch_index);
+                err = Some(UsbError::Nak);
+            }
 
-        if hcint.stall() {
-            trace!("  Stall response ch={}", self.ch_index);
-            self.signal_event(ChannelEvent::FatalError);
-        }
+            if hcint.txerr() {
+                trace!("  ch={} Transaction error", self.ch_index);
+                err = Some(UsbError::TransactionError);
+            }
 
-        if hcint.dterr() {
-            trace!("  Data toggle error ch={}", self.ch_index);
-            self.signal_event(ChannelEvent::FatalError);
-        }
+            if hcint.stall() {
+                trace!("  ch={} Stall response", self.ch_index);
+                err = Some(UsbError::Stall);
+            }
 
-        if hcint.frmor() {
-            trace!("  Frame overrrun ch={}", self.ch_index);
-        }
+            if hcint.dterr() {
+                trace!("  ch={} Data toggle error", self.ch_index);
+                err = Some(UsbError::DataToggleError);
+            }
 
-        if hcint.bberr() {
-            // transaction error flag will be set
-            trace!("  Babble error ch={}", self.ch_index);
-        }
+            if hcint.frmor() {
+                trace!("  ch={} Frame overrrun", self.ch_index);
+                err = Some(UsbError::FrameOverrun);
+            }
+
+            if hcint.bberr() {
+                trace!("  ch={} Babble error", self.ch_index);
+                err = Some(UsbError::BabbleError);
+            }
+
+            Err(err.expect("Missing channel error"))
+        };
+
+        self.signal_xfer_result(result);
     }
 
     pub fn on_host_rx_interrupt() {
@@ -202,28 +236,24 @@ impl Channel {
     }
 
     fn on_rx_interrupt(&mut self, rx_status: regs::GrxstsHost) {
+        // In this function, we don't self.signal_event(ChannelEvent::XXX), it's
+        // because on_ch_interrupt() takes care of the signaling. We are forced
+        // to look at these events (IN_DATA_DONE, etc.) because these events are
+        // stored on the RX Fifo, and there's no way around not popping these.
         match rx_status.pktsts() {
             vals::Pktstsh::IN_DATA_RX => {
                 let len = rx_status.bcnt() as usize;
-                trace!("ch={}, RX data received: len={}", self.ch_index, len);
+                trace!("  ch={} RX data received: len={}", self.ch_index, len);
                 self.on_data_rx(len);
-                // Nothing to signal.
-                // A `IN_DATA_DONE` or `CHANNEL_HALTED` event will come next.
             }
             vals::Pktstsh::IN_DATA_DONE => {
-                trace!("ch={}, RX done", self.ch_index);
-                self.signal_event(ChannelEvent::Complete);
+                trace!("  ch={} RX done", self.ch_index);
             }
-            // Data toggle error
             vals::Pktstsh::DATA_TOGGLE_ERR => {
-                trace!("ch={}, Data toggle error", self.ch_index);
-                // This can happen if we miss a packet, it's best to retry.
-                self.signal_event(ChannelEvent::RetryTransaction);
+                trace!("  ch={} RX Data toggle error", self.ch_index);
             }
-            // Channel halted
             vals::Pktstsh::CHANNEL_HALTED => {
-                trace!("ch={}, Channel halted", self.ch_index);
-                self.signal_event(ChannelEvent::FatalError);
+                trace!("  ch={} RX Channel halted", self.ch_index);
             }
             _ => unreachable!(),
         }
@@ -239,22 +269,21 @@ impl Channel {
 
         if len > buf.len() {
             // Extra data received. Oops.
-            debug!("ch={}, Too many bytes received (len={}), shutting down channel", self.ch_index, len);
+            debug!("ch={}, Too many bytes received (len={}), disabling channel", self.ch_index, len);
             // Flush the RX fifo
             for _ in 0..(len+3)/4 {
                 unsafe { self.get_fifo().read() };
             }
-            unsafe { self.hcchar().modify(|w| w.set_chena(false)); }
-            // We don't `signal_event`. Either a signal `Complete` (and the
-            // buffer length will be checked) or a `FatalError` will be sent
-            // because we disabled the channel.
+
+            self.disable();
+            self.signal_xfer_result(Err(UsbError::BabbleError));
         } else {
             // Read and advance the buffer pointer.
             self.read_from_fifo(&mut buf[0..len]);
             buf = &mut buf[len..];
 
-            // Re-enable channel if more data is to come.
             if !buf.is_empty() {
+                // Re-enable channel if more data is to come.
                 unsafe { self.hcchar().modify(|w| w.set_chdis(false)); }
             }
         }
@@ -268,20 +297,13 @@ impl Channel {
         while enabled_channels != 0 {
             let ch_index = enabled_channels.trailing_zeros() as u8;
             // Stealing is okay, the channel has been initialized as we are receiving interrupts.
-            unsafe { Channel::steal(ch_index) }.stop_pending_xfer();
+            let channel = unsafe { Channel::steal(ch_index) };
+            // We don't wait for the disable to finish. It's unclear
+            // whether it's a good idea to wait within the interrupt routine.
+            channel.disable();
+            channel.signal_xfer_result(Err(UsbError::DeviceDisconnected));
             enabled_channels &= !(1 << ch_index);
         }
-    }
-
-    fn stop_pending_xfer(&self) {
-        unsafe {
-            self.hcchar().modify(|w| {
-                w.set_chdis(true);
-                w.set_chena(false);
-            });
-        }
-
-        self.signal_event(ChannelEvent::FatalError);
     }
 
     pub fn with_pid(&mut self, packet_type: PacketType) -> ChannelAccessor {
@@ -299,11 +321,10 @@ impl Channel {
     }
 
     pub async fn read(&mut self, packet_type: Option<PacketType>, buf: &mut [MaybeUninit<u8>]) -> UsbResult<()> {
-        //debug!("read_bytes, size: {}", dst.len());
         let r = self.wait_for_completion(|self_| {
             let ctx = self_.interrupt_context();
-            // transmute to because ctx.buf has a static lifetime.
-            // It's a lie, but we'll cleanup the reference right after.
+            // transmute because ctx.buf has a static lifetime.
+            // It's a lie, but we cleanup the reference immediately after.
             ctx.buf = Some(unsafe { core::mem::transmute(&mut buf[..]) });
             self_.prepare_channel_xfer(packet_type, buf.len(), Direction::In);
         }).await;
@@ -315,34 +336,47 @@ impl Channel {
         self.wait_for_completion(|self_| {
             self_.prepare_channel_xfer(packet_type, buf.len(), Direction::Out);
             // We are writing, and it's blocking when the FIFO is full. Fine for now.
-            self_.write_to_non_periodic_fifo(buf);
+            self_.write_to_fifo(buf);
         }).await
     }
 
     async fn wait_for_completion(&mut self, mut f: impl FnMut(&mut Self)) -> UsbResult<()> {
-        // Ensure the channel is not being used
+        // Perhaps we could call self.disable() if it is being used, but for now, let's panic.
         debug_assert!(unsafe { self.hcchar().read().chena() == false });
 
+        let mut num_nak_attempts_left = NUM_XFER_NAK_ATTEMPTS;
         let mut num_attempts_left = NUM_XFER_ATTEMPTS;
+        fn dec(v: &mut usize) -> usize {
+            *v -= 1;
+            *v
+        }
 
         loop {
             f(self);
 
-            // If the port is disabled (due to a USB disconnection for example),
-            // make sure we don't wait as the stop_pending_xfer() function won't
-            // trigger a signal (it's been reset).
+            // We get interrupts if the device is disconnected, so the check is not racy.
             if unsafe { REGS.hprt().read().pena() == false } {
-                return Err(());
+                return Err(UsbError::DeviceDisconnected);
             }
 
-            match self.interrupt_context().event_signal.wait().await {
-                ChannelEvent::Complete => return Ok(()),
-                ChannelEvent::FatalError => return Err(()),
-                ChannelEvent::RetryTransaction => {
-                    num_attempts_left -= 1;
-                    if num_attempts_left == 0 {
-                        debug!("Data transfer retried too many times. Aborting.");
-                        return Err(());
+            match self.interrupt_context().xfer_signal.wait().await {
+                Ok(()) => return Ok(()),
+                Err(e) => match ErrorClass::from(e) {
+                    ErrorClass::RetryableNak => {
+                        if dec(&mut num_nak_attempts_left) == 0 {
+                            debug!("Aborting transaction: too many NAKs received");
+                            return Err(e);
+                        }
+                    }
+                    ErrorClass::Retryable => {
+                        if dec(&mut num_attempts_left) == 0 {
+                            debug!("Aborting transaction: too many transfer errors: {:?}", e);
+                            return Err(e);
+                        }
+                    }
+                    ErrorClass::Fatal => {
+                        debug!("Aborting transaction: fatal error: {:?}", e);
+                        return Err(e)
                     }
                 }
             }
@@ -370,16 +404,15 @@ impl Channel {
     }
 
 
-    fn write_to_non_periodic_fifo(&mut self, mut src: &[u8]) {
+    fn write_to_fifo(&mut self, mut src: &[u8]) {
         let dst = self.get_fifo();
 
         // We'll be spinning until we have all the data written to the fifo.
-        // Other USB stacks don't look at error. We keep pushing bytes, hopefully it doesn't block.
         while !src.is_empty() {
             let mut space_available_in_words = unsafe { REGS.gnptxsts().read().nptxfsav() };
             while !src.is_empty() && space_available_in_words > 0 {
                 unsafe {
-                    // We'll be transfering garbage if src.len mod 4 != 0,
+                    // We'll be sending garbage to the fifo if src.len mod 4 != 0,
                     // but that's okay, it's never leaving the device.
                     let v = (src.as_ptr() as *const u32).read_unaligned();
                     dst.write_value(regs::Fifo(v))
@@ -392,9 +425,6 @@ impl Channel {
 
     fn prepare_channel_xfer(&mut self, packet_type: Option<PacketType>, size: usize, dir: Direction) {
         unsafe {
-            // Ensure the channel is not being used
-            debug_assert!(self.hcchar().read().chena() == false);
-
             // Ensure we have the right direction
             debug_assert!(self.hcchar().read().epdir() == (dir == Direction::In));
 
@@ -407,6 +437,8 @@ impl Channel {
             // Apparently, odd frames are used for periodic endpoints,
             // but the STM32 SDK does it for all endpoints.
             let oddfrm = REGS.hfnum().read().frnum() & 1 == 1;
+
+            let nptx = REGS.gnptxsts().read();
 
             trace!("Prepare XFER ch: {}, dir: {:?}, pid: {:?}, pktcnt: {}, size: {}",
               self.ch_index, dir, packet_type, pkt_cnt, size);
@@ -421,18 +453,22 @@ impl Channel {
                 size
             };
 
-            self.hctsiz().modify(|w| {
+            // Note: We cannot use hctsiz.modify() here. Sometimes, the bit 31
+            // "Reserved" is set, and if we write it back, everything stops working.
+            self.hctsiz().write(|w| {
                 // When the dpid field is left alone, DATA0/1 toggle is done
                 // automatically.
                 if let Some(packet_type) = packet_type {
                     w.set_dpid(packet_type as u8);
+                } else {
+                    w.set_dpid(self.hctsiz().read().dpid());
                 }
 
                 w.set_pktcnt(pkt_cnt as u16);
                 w.set_xfrsiz(size as u32);
             });
 
-            self.interrupt_context().event_signal.reset();
+            self.interrupt_context().xfer_signal.reset();
 
             self.hcchar().modify(|w| {
                 w.set_oddfrm(oddfrm);
@@ -449,7 +485,7 @@ pub struct ChannelAccessor<'b> {
 }
 
 impl<'b> Read for ChannelAccessor<'b> {
-    type Error = ();
+    type Error = UsbError;
     type ReadFuture<'a> = impl Future<Output = Result<&'a [u8], Self::Error>> + 'a where Self: 'a;
 
     fn read<'a>(&'a mut self, buf: &'a mut [MaybeUninit<u8>]) -> Self::ReadFuture<'a> {
@@ -461,7 +497,7 @@ impl<'b> Read for ChannelAccessor<'b> {
 }
 
 impl<'b> Write for ChannelAccessor<'b> {
-    type Error = ();
+    type Error = UsbError;
     type WriteFuture<'a> = impl Future<Output = Result<(), Self::Error>> + 'a where Self: 'a;
 
     fn write<'a>(&'a mut self, buf: &'a [u8]) -> Self::WriteFuture<'a> {
@@ -504,12 +540,19 @@ pub enum Direction {
     In = 0x80,
 }
 
-#[derive(Clone, Copy, PartialEq, Eq, Debug)]
-enum ChannelEvent {
-    // Transfer complete
-    Complete,
-    // Retry this request
-    RetryTransaction,
-    // No retry on this one
-    FatalError,
+enum ErrorClass {
+    RetryableNak,
+    Retryable,
+    Fatal,
+}
+
+impl From<UsbError> for ErrorClass {
+    fn from(v: UsbError) -> Self {
+        use UsbError::*;
+        match v {
+            Nak => Self::RetryableNak,
+            DataToggleError | FrameOverrun | BabbleError | TransactionError => Self::Retryable,
+            _ => Self::Fatal,
+        }
+    }
 }

@@ -6,12 +6,14 @@
 #![feature(type_alias_impl_trait)]
 #![feature(maybe_uninit_as_bytes)]
 #![feature(maybe_uninit_uninit_array)]
+#![feature(maybe_uninit_array_assume_init)]
 #![feature(maybe_uninit_slice)]
 #![feature(generic_const_exprs)]
 #![feature(generic_associated_types)]
 #![feature(core_intrinsics)]
 #![feature(future_join)]
 #![feature(future_poll_fn)]
+
 #![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code, unused_unsafe)]
 
 extern crate alloc;
@@ -85,7 +87,7 @@ mod high_priority_tasks {
 }
 
 mod medium_priority_tasks {
-    use crate::drivers::{lcd::Color, read_cycles};
+    use crate::drivers::{lcd::Color, read_cycles, usb::{UsbError, MscBlockDevice}};
 
     use super::*;
 
@@ -98,43 +100,45 @@ mod medium_priority_tasks {
     }
     */
 
-    /*
     #[embassy::task]
     pub async fn usb_stack() {
-        async fn usb_main(usb: &mut UsbHost) -> UsbResult<()> {
-            let mut fs = usb.wait_for_device::<Msc>().await?
-                .into_block_device().await?
+        // A separate function just to make error handling easier.
+        async fn wait_for_usb_block_device(usb: &mut UsbHost) -> UsbResult<MscBlockDevice> {
+            usb.wait_for_device().await?
+                .enumerate::<Msc>().await?
+                .into_block_device().await
+        }
+
+        async fn usb_main(usb: &mut UsbHost) -> Result<(), embedded_sdmmc::Error<UsbError>> {
+            let mut fs = wait_for_usb_block_device(usb).await
+                .map_err(embedded_sdmmc::Error::DeviceError)?
                 .into_fatfs_controller();
 
-            //debug!("Disk initialized");
-            let mut volume = fs.get_volume(embedded_sdmmc::VolumeIdx(0)).await.map_err(drop)?;
+            debug!("Disk initialized");
+            let mut volume = fs.get_volume(embedded_sdmmc::VolumeIdx(0)).await?;
+            trace!("{:#?}", volume);
+            let root = fs.open_root_dir(&volume)?;
 
-            //debug!("{:#?}", volume);
-            let root = fs.open_root_dir(&volume).map_err(drop)?;
-            //debug!("Root dir:");
-
+            debug!("Root dir:");
             fs.iterate_dir(&volume, &root, |entry| {
                 if !entry.attributes.is_hidden() {
-                    if entry.attributes.is_directory() {
-                        //debug!("  DIR  {}", entry.name);
-                    }
-                    if entry.attributes.is_archive() {
-                        debug!("  FILE {} {} {:3} MB", entry.name, entry.mtime, entry.size/1024/1024);
-                    }
+                    let ftype = if entry.attributes.is_directory() { "DIR" } else { "FILE" };
+                    debug!("  {:4} {:3}MB {} {}", ftype, entry.size/1024/1024, entry.mtime, entry.name);
                 }
-            }).await.map_err(drop)?;
+            }).await?;
 
-            let mut file = File::new(&mut fs, &mut volume, &root, "RESINX~2.PWM", Mode::ReadOnly).await.map_err(drop)?;
+            let mut file = File::new(&mut fs, &mut volume, &root, "VALIDA~1.CTB", Mode::ReadOnly).await?;
 
             use file_formats::photon::*;
             let layer_definition_offset = {
-                let header = file.read_obj::<Header>().await.map_err(drop)?;
+                let header = file.read_obj::<Header>().await?;
                 header.layer_definition_offset
             };
 
             let num_layers = {
-                file.seek_from_start(layer_definition_offset)?;
-                let header = file.read_obj::<LayerDefinition>().await.map_err(drop)?;
+                // TODO Have proper errors
+                file.seek_from_start(layer_definition_offset).expect("bad file offset");
+                let header = file.read_obj::<LayerDefinition>().await?;
                 header.layer_count
             };
 
@@ -143,13 +147,14 @@ mod medium_priority_tasks {
 
                 let lcd = unsafe { LCD.steal() };
                 let start_cycles = read_cycles();
-                lcd.draw().set_all_black();
+                //lcd.draw().set_all_black();
 
             //let layer_index = 2;
             for layer_index in 0..num_layers {
                 let layers_offset = layer_definition_offset + core::mem::size_of::<LayerDefinition>() as u32;
-                file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32)?;
-                let layer = file.read_obj::<Layer>().await.map_err(drop)?;
+                // TODO Have proper errors
+                file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32).expect("bad file offset");
+                let layer = file.read_obj::<Layer>().await?;
 
                 {
                     let lcd = unsafe { LCD.steal() };
@@ -157,11 +162,13 @@ mod medium_priority_tasks {
 
                     let start_cycles = read_cycles();
                     {
-                        let mut lcd_drawing = lcd.draw();
+                        //let mut lcd_drawing = lcd.draw();
 
+                        /*
                         layer.for_each_pixel(&mut file, |color, repeat| {
                             lcd_drawing.push_pixels(color, repeat as usize);
                         }).await.map_err(drop)?;
+                        */
                     }
                     let end_cycles = read_cycles();
 
@@ -176,11 +183,12 @@ mod medium_priority_tasks {
 
         let usb_host = unsafe { USB_HOST.steal() };
         loop {
-            let _ = usb_main(usb_host).await;
+            if let Err(e) = usb_main(usb_host).await {
+                warn!("File access failed: {:?}", e);
+            }
             Timer::after(Duration::from_millis(100)).await
         }
     }
-    */
 
     #[embassy::task]
     pub async fn touch_screen_task(mut touch_screen: TouchScreen) {
@@ -366,9 +374,7 @@ fn main() -> ! {
 
     let (lvgl, display) = lvgl_init(machine.display);
 
-    /*
     USB_HOST.put(machine.usb_host);
-    */
 
     let lcd = LCD.put(machine.lcd);
     lcd.test();
@@ -408,7 +414,7 @@ fn main() -> ! {
             spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
             spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
             spawner.spawn(medium_priority_tasks::main_task()).unwrap();
-            //spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
+            spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
 
             //spawner.spawn(medium_priority_tasks::lcd_task(lcd_receiver)).unwrap();
         });

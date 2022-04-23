@@ -14,14 +14,12 @@ use embassy::{
     time::{Duration, Timer},
 };
 
-use super::{Channel, enumerate, InterfaceHandler};
-
-pub type UsbResult<T> = Result<T, ()>;
+use super::{Channel, DetectedDevice, InterfaceHandler, UsbResult, UsbError};
 
 macro_rules! ensure {
-    ($expr:expr) => {
+    ($expr:expr, $err:expr) => {
         if (!$expr) {
-            return Err(());
+            return Err($err);
         }
     };
 }
@@ -33,7 +31,7 @@ const FIFO_LEN: u16 = 320;
 // The FIFO SRAM gets partionned as we wish.
 // The sum of these constants must be less than 320.
 const RX_FIFO_LEN: u16 = 128;
-const NON_PERIODIC_TX_FIFO_LEN: u16 = 128;
+const NON_PERIODIC_TX_FIFO_LEN: u16 = 96;
 const PERIODIC_TX_FIFO_LEN: u16 = 64;
 
 pub struct UsbHost {
@@ -47,8 +45,8 @@ impl UsbHost {
         _usb: p::USB_OTG_FS,
     ) -> Self {
         unsafe {
-            dm.set_as_af(0, AFType::OutputPushPull);
-            dp.set_as_af(0, AFType::OutputPushPull);
+            dm.set_as_af(10, AFType::OutputPushPull);
+            dp.set_as_af(10, AFType::OutputPushPull);
         }
         let event = Signal::new();
         Self { event }
@@ -58,22 +56,21 @@ impl UsbHost {
         // RCC enable/reset
         p::USB_OTG_FS::enable();
         p::USB_OTG_FS::reset();
+        self.event.reset();
 
         // We follow the code from the STM32CubeF1 SDK.
         unsafe {
             // USB_CoreInit() from the SDK
             {
                 // Select full-speed Embedded PHY. This is what the device will
-                // most likely support.  If we get it wrong, we pay the cost of
+                // most likely support. If we get it wrong, we pay the cost of
                 // doing an extra port reset (an extra 20ms, no big deal).
-                REGS.hcfg().modify(|w|
-                    w.set_fslspcs(vals::Speed::FULL_SPEED)
-                );
-
+                // Doing a port reset is not necessary on the f4 family it appears.
+                REGS.hcfg().modify(|w| w.set_fslspcs(vals::Speed::FULL_SPEED));
 
                 // The following performs a Soft Reset. It doesn't seem that it's needed.
                 // After all, we just did a hard reset via the RCC register.
-                // We changed fslsp, but that only needs a port reset, which will come.
+                // If we change the PHY clock, we would need to do so.
                 /*
                 while REGS.grstctl().read().ahbidl() == false {}
                 REGS.grstctl().modify(|w| w.set_csrst(true));
@@ -97,12 +94,6 @@ impl UsbHost {
 
             // USB_HostInit() from the SDK
             {
-                // Restart the PHY Clock. Not sure that this is actually needed.
-                // Leaving that out.
-                /*
-                REGS.pcgcctl().write_value(regs::Pcgcctl(0));
-                */
-
                 // FIFO setup
                 {
                     assert!(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN+PERIODIC_TX_FIFO_LEN <= FIFO_LEN);
@@ -149,8 +140,6 @@ impl UsbHost {
                     w.set_ipxfrm_iisooxfrm(true);
                 })
             }
-
-            self.event.reset();
 
             // HNP is probably needed when we do real OTG and we don't know if
             // we are device or host yet.
@@ -213,7 +202,7 @@ impl UsbHost {
                         self.event.signal(event.unwrap_or(Event::PortEnabled));
                     } else {
                         debug!("Port disabled");
-                        self.event.signal(Event::Disconnected);
+                        //self.event.signal(Event::Disconnected);
                         Channel::on_host_disconnect_interrupt();
                     }
                 }
@@ -242,10 +231,14 @@ impl UsbHost {
             let host_speed = REGS.hcfg().read().fslspcs();
             if port_speed != host_speed {
                 REGS.hcfg().modify(|w| w.set_fslspcs(port_speed));
-                Some(Event::NeedPortReset)
-            } else {
-                None
+
+                // Odd. on the f4, we don't need to reset the port again for the
+                // new speed to take account. If we do it, we get a port disabled.
+                #[cfg(feature="stm32f1")]
+                return Some(Event::NeedPortReset);
             }
+
+            None
         }
     }
 
@@ -261,27 +254,29 @@ impl UsbHost {
     }
 
     async fn wait_for_event(&self, wanted_event: Event) -> UsbResult<()> {
-        let event = self.event.wait().await;
-        if event != wanted_event {
-            trace!("While waiting for {:?}, received {:?}", wanted_event, event);
-            Err(())
-        } else {
-            Ok(())
+        loop {
+            let event = self.event.wait().await;
+            match event {
+                _ if event == wanted_event => return Ok(()),
+                Event::Disconnected => return Err(UsbError::DeviceDisconnected),
+                Event::NeedPortReset => {
+                    trace!("USB port speed changed. Resetting port");
+                    self.reset_port().await;
+                }
+                // We should not get other events
+                // This shouldn't happen. That mean we don't understand the control flow.
+                _ => panic!("While waiting for {:?}, received {:?}", wanted_event, event),
+            }
         }
     }
 
-    async fn peek_event(&self) -> Event {
-        let event = self.event.wait().await;
-        self.event.signal(event);
-        event
-    }
-
-    pub async fn wait_for_device<T: InterfaceHandler>(&mut self) -> UsbResult<T> {
+    pub async fn wait_for_device(&mut self) -> UsbResult<DetectedDevice> {
         self.init();
 
-        debug!("USB waiting for device");
+        trace!("USB waiting for device");
         self.wait_for_event(Event::PortConnectDetected).await?;
-        trace!("USB device detected");
+
+        debug!("USB device detected");
 
         // Let the device boot. USB Specs say 200ms is enough, but some devices
         // can take longer apparently, so we'll wait a little longer.
@@ -289,20 +284,11 @@ impl UsbHost {
 
         self.reset_port().await;
 
-        // If the port speed changed, we need to reset the port.
-        if self.peek_event().await == Event::NeedPortReset {
-            self.event.reset();
-            trace!("USB port speed changed. Resetting port");
-            self.reset_port().await;
-        }
-
         self.wait_for_event(Event::PortEnabled).await?;
         trace!("USB device enabled");
-        Timer::after(Duration::from_millis(20)).await;
 
-        let result = enumerate::<T>().await;
-        debug!("USB enumeation done");
-        result
+        Timer::after(Duration::from_millis(20)).await;
+        Ok(DetectedDevice)
     }
 }
 
