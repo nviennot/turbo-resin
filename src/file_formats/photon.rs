@@ -3,8 +3,9 @@
 // Based on https://github.com/sn4k3/UVtools/blob/master/UVtools.Core/FileFormats/PhotonWorkshopFile.cs
 
 use core::mem::MaybeUninit;
-use crate::drivers::lcd::Color;
 use crate::util::io::{Seek, BufReader, ReadPartial};
+
+type Color = u8;
 
 use crate::consts::io::*;
 

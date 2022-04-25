@@ -35,7 +35,7 @@ impl Machine {
         //  External flash
         //--------------------------
 
-        let ext_flash = ExtFlash::new(
+        let mut ext_flash = ExtFlash::new(
             p.PG15, p.PB3, p.PB4, p.PB5, p.SPI3, p.DMA1_CH2, p.DMA1_CH5
         ).expect("Failed to initialize the external spi flash");
 
@@ -106,7 +106,7 @@ impl Machine {
         // LCD Panel
         //--------------------------
         let lcd_fpga = LcdFpga::new(p.PF9, p.PF8, p.PG4, p.PE2, p.PE5);
-        //lcd_fpga.upload_bitstream(&mut ext_flash);
+        lcd_fpga.upload_bitstream(&mut ext_flash);
         let lcd = Lcd::new(p.PA15, p.PC7, p.PC6, p.PG3);
 
         //--------------------------

@@ -51,8 +51,10 @@ use drivers::{
     touch_screen::{TouchEvent, TouchScreen},
     display::Display as RawDisplay,
     zaxis,
-    usb::UsbHost, lcd::Lcd,
+    usb::UsbHost, lcd::Lcd, ext_flash::ExtFlash,
 };
+
+use spi_memory::prelude::*;
 
 use crate::{
     drivers::usb::{Msc, UsbResult},
@@ -67,6 +69,7 @@ static Z_AXIS: Forever<zaxis::MotionControlAsync> = Forever::new();
 static USB_HOST: Forever<UsbHost> = Forever::new();
 static TASK_RUNNER: Forever<TaskRunner<ui::Task>> = Forever::new();
 static LCD: Forever<Lcd> = Forever::new();
+static EXT_FLASH: Forever<ExtFlash> = Forever::new();
 
 mod maximum_priority_tasks {
     use super::*;
@@ -87,7 +90,7 @@ mod high_priority_tasks {
 }
 
 mod medium_priority_tasks {
-    use crate::drivers::{lcd::Color, read_cycles, usb::{UsbError, MscBlockDevice}};
+    use crate::drivers::{read_cycles, usb::{UsbError, MscBlockDevice}};
 
     use super::*;
 
@@ -127,54 +130,44 @@ mod medium_priority_tasks {
                 }
             }).await?;
 
-            let mut file = File::new(&mut fs, &mut volume, &root, "VALIDA~1.CTB", Mode::ReadOnly).await?;
+            let mut file = File::new(&mut fs, &mut volume, &root, "TEST_P~1.CTB", Mode::ReadOnly).await?;
 
-            use file_formats::photon::*;
-            let layer_definition_offset = {
+            use file_formats::ctb::*;
+            let (layers_offset, num_layers, xor_key) = {
                 let header = file.read_obj::<Header>().await?;
-                header.layer_definition_offset
-            };
-
-            let num_layers = {
-                // TODO Have proper errors
-                file.seek_from_start(layer_definition_offset).expect("bad file offset");
-                let header = file.read_obj::<LayerDefinition>().await?;
-                header.layer_count
+                (header.layers_offset, header.num_layers, header.xor_key)
             };
 
             debug!("Num layers: {}", num_layers);
 
+            let lcd = unsafe { LCD.steal() };
+            let start_cycles = read_cycles();
+            //lcd.draw().set_all_black();
 
-                let lcd = unsafe { LCD.steal() };
-                let start_cycles = read_cycles();
-                //lcd.draw().set_all_black();
-
-            //let layer_index = 2;
-            for layer_index in 0..num_layers {
-                let layers_offset = layer_definition_offset + core::mem::size_of::<LayerDefinition>() as u32;
+            for layer_index in 5..num_layers {
                 // TODO Have proper errors
                 file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32).expect("bad file offset");
                 let layer = file.read_obj::<Layer>().await?;
+                //debug!("{:#?}", layer);
 
                 {
                     let lcd = unsafe { LCD.steal() };
-
-
                     let start_cycles = read_cycles();
                     {
-                        //let mut lcd_drawing = lcd.draw();
+                        let mut lcd_drawing = lcd.draw();
 
-                        /*
-                        layer.for_each_pixel(&mut file, |color, repeat| {
+                        //lcd_drawing.stripes(4);
+                        //lcd_drawing.waves(16);
+                        //lcd_drawing.set_all_black();
+
+                        layer.for_each_pixels(&mut file, layer_index, xor_key, |color, repeat| {
                             lcd_drawing.push_pixels(color, repeat as usize);
-                        }).await.map_err(drop)?;
-                        */
+                        }).await?;
                     }
                     let end_cycles = read_cycles();
-
                     debug!("Print drawing, took {}ms", end_cycles.wrapping_sub(start_cycles)/120_000);
+                    Timer::after(Duration::from_secs(300)).await;
                 }
-
             }
 
             Timer::after(Duration::from_secs(10000)).await;
@@ -279,61 +272,6 @@ fn iter_port_reg_changes(old_value: u32, new_value: u32, stride: u8, mut f: impl
     }
 }
 
-/*
-struct Gpio {
-    letter: char,
-    port: pac::gpio::Gpio,
-
-    mask_ignore: u16,
-    idr: u32,
-}
-
-impl Gpio {
-    pub fn new(letter: char, port: pac::gpio::Gpio) -> Self {
-        Self { letter, port, idr: 0, mask_ignore: 0, }
-    }
-
-    fn ignore(mut self, pin: u8) -> Self {
-        self.mask_ignore |= 1 << pin;
-        self
-    }
-
-    fn pin_ignore(&self, pin: u8) -> bool {
-        self.mask_ignore & (1 << pin) != 0
-    }
-
-    pub fn refresh(&mut self) {
-        let new_idr = unsafe { self.port.idr().read().0 };
-            iter_port_reg_changes(self.idr, new_idr, 1, |pin, v| {
-                if !self.pin_ignore(pin) {
-                    debug!("P{}{} input={}", self.letter, pin, v);
-                }
-            });
-        self.idr = new_idr;
-    }
-}
-
-fn monitor_ports() {
-    unsafe {
-        let mut ports = [
-            //Gpio::new('A', pac::GPIOA).ignore(13).ignore(14).ignore(1),
-            Gpio::new('B', pac::GPIOB),
-            //Gpio::new('C', pac::GPIOC),
-            //Gpio::new('D', pac::GPIOD),
-            //Gpio::new('E', pac::GPIOE),
-            //Gpio::new('F', pac::GPIOF),
-            //Gpio::new('G', pac::GPIOG),
-        ];
-
-        loop {
-            for port in &mut ports {
-                port.refresh();
-            }
-        }
-    }
-}
-*/
-
 fn main() -> ! {
     logging::init_logging();
 
@@ -376,8 +314,10 @@ fn main() -> ! {
 
     USB_HOST.put(machine.usb_host);
 
+    EXT_FLASH.put(machine.ext_flash);
+
     let lcd = LCD.put(machine.lcd);
-    lcd.test();
+    lcd.init();
 
     //debug!("FPGA version: {:x}", lcd.get_version());
 

@@ -13,8 +13,7 @@ use crate::consts::lcd::*;
 use crate::drivers::{delay_us, delay_ms};
 use crate::util::bitbang_spi::Spi;
 
-pub type Color = u8;
-
+use super::Drawing;
 
 pub struct Lcd {
     cs: Output<'static, p::PA15>,
@@ -39,9 +38,8 @@ impl Lcd {
         Self { cs, spi }
     }
 
-    pub fn test(&mut self) {
+    pub fn init(&mut self) {
         self.cmd(Command::MaskDisplay);
-        delay_ms(10);
         self.cmd(Command::Unknown03);
 
         if let Ok((w,h)) = self.get_resolution() {
@@ -49,7 +47,26 @@ impl Lcd {
         } else {
             debug!("Failed to get LCD resolution");
         }
+    }
 
+    pub fn draw(&mut self) -> Drawing {
+        Drawing::new(self)
+    }
+
+    pub fn start_drawing_raw(&mut self) {
+        self.cmd(Command::MaskDisplay);
+        self.cmd(Command::Unknown10);
+        self.cmd(Command::Unknown20);
+        self.cmd(Command::StartDrawing);
+        self.cs.set_low();
+    }
+
+    pub fn send_data(&mut self, data: u8) {
+        self.spi.xfer(data);
+    }
+
+    pub fn finish_drawing_raw(&mut self) {
+        self.cs.set_high();
         self.cmd(Command::UnmaskDisplay);
     }
 

@@ -5,3 +5,6 @@ pub use lcd::*;
 
 mod lcd_fpga;
 pub use lcd_fpga::*;
+
+mod drawing;
+pub use drawing::*;
