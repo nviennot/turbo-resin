@@ -130,7 +130,7 @@ mod medium_priority_tasks {
                 }
             }).await?;
 
-            let mut file = File::new(&mut fs, &mut volume, &root, "TEST_P~1.CTB", Mode::ReadOnly).await?;
+            let mut file = File::new(&mut fs, &mut volume, &root, "VALIDA~2.CTB", Mode::ReadOnly).await?;
 
             use file_formats::ctb::*;
             let (layers_offset, num_layers, xor_key) = {
@@ -154,12 +154,15 @@ mod medium_priority_tasks {
                     let lcd = unsafe { LCD.steal() };
                     let start_cycles = read_cycles();
                     {
+
+                        /*
+                        lcd.draw().set_all_black();
+                        lcd.draw().set_all_white();
+                        //lcd.draw().gradient();
+                        lcd.draw().waves(8, 100);
+                        */
+
                         let mut lcd_drawing = lcd.draw();
-
-                        //lcd_drawing.stripes(4);
-                        //lcd_drawing.waves(16);
-                        //lcd_drawing.set_all_black();
-
                         layer.for_each_pixels(&mut file, layer_index, xor_key, |color, repeat| {
                             lcd_drawing.push_pixels(color, repeat as usize);
                         }).await?;

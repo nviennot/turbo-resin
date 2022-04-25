@@ -22,14 +22,11 @@ pub struct Lcd {
 
 impl Lcd {
     pub fn new(
-        //reset: p::PF8, // TODO confirm this is reset. I have no idea in reality
         cs: p::PA15,
         clk: p::PC7,
         miso: p::PC6,
         mosi: p::PG3,
     ) -> Self {
-        // forget to avoid the pin to get back in the input state.
-        //core::mem::forget(Output::new(reset, Level::Low, Speed::Low));
         let cs = Output::new(cs, Level::High, Speed::Medium);
         let clk = Output::new(clk, Level::Low, Speed::Medium);
         let mosi = Output::new(mosi, Level::Low, Speed::Medium);
@@ -40,6 +37,7 @@ impl Lcd {
 
     pub fn init(&mut self) {
         self.cmd(Command::MaskDisplay);
+        // Not sure what that command does. But the original firmware does it.
         self.cmd(Command::Unknown03);
 
         if let Ok((w,h)) = self.get_resolution() {
@@ -55,6 +53,8 @@ impl Lcd {
 
     pub fn start_drawing_raw(&mut self) {
         self.cmd(Command::MaskDisplay);
+        // These two unknown commands are done in the original firmware.
+        // Taking it away doesn't seem to break anything, but we'll leave it there.
         self.cmd(Command::Unknown10);
         self.cmd(Command::Unknown20);
         self.cmd(Command::StartDrawing);
@@ -84,7 +84,8 @@ impl Lcd {
 
     fn wait_for_reply(&mut self) -> Result<(), ()> {
         // 3 is abitrary. In the original firmware, they look for the reply
-        // header within ~11 bytes. It's a bit silly though.
+        // header within ~11 bytes. It's a bit silly though, the FPGA
+        // should reply deterministically.
         for _ in 0..3 {
             if self.spi.xfer(0u16) == REPLY_HEADER {
                 return Ok(())
@@ -97,13 +98,13 @@ impl Lcd {
         let toggle_cs = self.cs.is_set_high();
         if toggle_cs { self.cs.set_low(); }
 
-        self.spi.xfer((CMD_PREFIX << 8) | cmd as u16);
+        self.spi.xfer(((CMD_PREFIX as u16) << 8) | cmd as u16);
 
         if toggle_cs { self.cs.set_high(); }
     }
 }
 
-const CMD_PREFIX: u16 = 0xfe;
+const CMD_PREFIX: u8 = 0xfe;
 const REPLY_HEADER: u16 = 0xfbfd;
 
 #[derive(Debug, Clone, Copy)]
