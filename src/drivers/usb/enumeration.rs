@@ -80,14 +80,14 @@ impl DetectedDevice {
 
                     if let Ok(prepare_output) = H::prepare(DEV_ADDR, &interface, &endpoints) {
                         ctrl.set_configuration(config.configuration_value).await?;
-                        trace!("Configuration {} set", config.configuration_value);
+                        debug!("USB device configured with config={}", config.configuration_value);
                         return Ok(H::new(ctrl, prepare_output));
                     }
                 }
             }
         }
 
-        debug!("No suitable interfaces found");
+        debug!("USB device has no suitable interfaces");
         Err(UsbError::InterfaceNotFound)
     }
 }

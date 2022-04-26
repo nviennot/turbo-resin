@@ -187,22 +187,23 @@ impl UsbHost {
             REGS.hprt().modify(|w| {
                 // Port detected?
                 if w.pcdet() {
-                    self.event.signal(Event::PortConnectDetected);
+                    self.event.signal(Event::DeviceDetected);
                 }
 
                 // Port enabled?
                 if w.penchng() {
                     if w.pena() {
+                        trace!("Port ready");
                         // Not clearing the port enable bit makes the core to disable
                         // the port immedately after. Took me hours to figure this out :(
                         // This is not what the documentation says!
                         w.set_pena(false);
 
                         let event = self.maybe_change_port_speed(w.pspd());
-                        self.event.signal(event.unwrap_or(Event::PortEnabled));
+                        self.event.signal(event.unwrap_or(Event::PortReady));
                     } else {
-                        debug!("Port disabled");
-                        //self.event.signal(Event::Disconnected);
+                        trace!("Port disabled");
+                        self.event.signal(Event::Disconnected);
                         Channel::on_host_disconnect_interrupt();
                     }
                 }
@@ -244,12 +245,13 @@ impl UsbHost {
 
     async fn reset_port(&self) {
         unsafe {
+            trace!("USB port reset initiated");
             // Brings the D- D+ lines down to initiate a device reset
             REGS.hprt().modify(|w| w.set_prst(true));
             // 10ms is the minimum by the USB specs. We add margins.
             Timer::after(Duration::from_millis(20)).await;
             REGS.hprt().modify(|w| w.set_prst(false));
-            trace!("USB port reset");
+            trace!("USB port reset done");
         }
     }
 
@@ -274,7 +276,7 @@ impl UsbHost {
         self.init();
 
         trace!("USB waiting for device");
-        self.wait_for_event(Event::PortConnectDetected).await?;
+        self.wait_for_event(Event::DeviceDetected).await?;
 
         debug!("USB device detected");
 
@@ -284,8 +286,8 @@ impl UsbHost {
 
         self.reset_port().await;
 
-        self.wait_for_event(Event::PortEnabled).await?;
-        trace!("USB device enabled");
+        self.wait_for_event(Event::PortReady).await?;
+        trace!("USB port ready");
 
         Timer::after(Duration::from_millis(20)).await;
         Ok(DetectedDevice)
@@ -295,8 +297,8 @@ impl UsbHost {
 
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 enum Event {
-    PortConnectDetected,
-    PortEnabled,
+    DeviceDetected,
+    PortReady,
     NeedPortReset,
     Disconnected,
 }

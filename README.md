@@ -60,9 +60,9 @@ stick. You'll need:
 
 ### Prerequisites
 
-Install the Rust toolchain. Follow instruction in the [installation section of
-the Rust Embedded Book](https://docs.rust-embedded.org/book/intro/install.html).
-For the target, use `thumbv7em-none-eabihf`. In a nutshell:
+Install the Rust toolchain. Following instructions of the [installation section of
+the Rust Embedded Book](https://docs.rust-embedded.org/book/intro/install.html),
+run the following:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
@@ -78,7 +78,7 @@ brew install armmbed/formulae/arm-none-eabi-gcc openocd
 If you are using vscode, replace `saturn` with the printer of your choice in
 `~/.vscode/settings.json`
 
-Then you are ready for building:
+You are ready for building the firmware, see next section.
 
 ### Build
 
