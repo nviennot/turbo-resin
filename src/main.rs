@@ -164,7 +164,7 @@ mod medium_priority_tasks {
 
                         let mut lcd_drawing = lcd.draw();
                         layer.for_each_pixels(&mut file, layer_index, xor_key, |color, repeat| {
-                            lcd_drawing.push_pixels(color, repeat as usize);
+                            lcd_drawing.push_pixels(color, repeat);
                         }).await?;
                     }
                     let end_cycles = read_cycles();

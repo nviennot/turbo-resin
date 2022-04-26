@@ -16,8 +16,8 @@ pub mod display {
 }
 
 pub mod lcd {
-    pub const WIDTH: u16 = 3840;
-    pub const HEIGHT: u16 = 2400;
+    pub const WIDTH: u32 = 3840;
+    pub const HEIGHT: u32 = 2400;
     pub const SPI_FREQ_HZ: u32 = 10_000_000;
 
     pub const BITSTREAM_HEADER_OFFSET: u32 = 0x79000;

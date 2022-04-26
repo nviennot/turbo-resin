@@ -1,84 +1,23 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use crate::consts::io::*;
+use crate::drivers::lcd::Color8;
+use super::Lcd;
 
-use super::{Lcd};
-
-use crate::consts::lcd::*;
-
+/// This framebuffer uses 7-bit grascale values
 pub type Color7 = u8;
-const BLACK: Color7 = 0x00;
-const WHITE: Color7 = 0x7F;
 
-pub struct Drawing<'a> {
+pub struct Framebuffer<'a> {
     lcd: &'a mut Lcd,
-
     color: Color7,
     color_repeat: u32,
-
     total_pixel_count: u32,
 }
 
-impl<'a> Drawing<'a> {
+impl<'a> Framebuffer<'a> {
     pub fn new(lcd: &'a mut Lcd) -> Self {
         lcd.start_drawing_raw();
-        Self {
-            lcd,
-            color: 0,
-            color_repeat: 0,
-            total_pixel_count: 0,
-        }
+        Self { lcd, color: 0, color_repeat: 0, total_pixel_count: 0 }
     }
-
-    pub fn set_all_black(mut self) {
-        self.push_pixels(BLACK, HEIGHT as usize * WIDTH as usize);
-    }
-
-    pub fn set_all_white(mut self) {
-        self.push_pixels(WHITE, HEIGHT as usize * WIDTH as usize);
-    }
-
-    pub fn stripes(mut self, n: usize) {
-        for i in 0..n {
-            let color = if i%2 == 0 { BLACK } else { WHITE };
-            self.push_pixels(color, HEIGHT as usize * WIDTH as usize / n);
-        }
-    }
-
-    pub fn gradient(mut self) {
-        for y in 0..HEIGHT {
-            let color = ((WHITE as u32) * (y as u32)) / HEIGHT as u32;
-            self.push_pixels(color as u8, WIDTH as usize);
-        }
-    }
-
-    pub fn checker(mut self, n: u16) {
-        for y in 0..HEIGHT {
-            for x in 0..WIDTH {
-                let color = if (x/n)%2 ^ (y/n)%2 == 0 { WHITE } else { BLACK };
-                self.push_pixels(color, 1);
-            }
-        }
-    }
-
-    pub fn waves(mut self, n: u64, grid: u64) {
-        const HEIGHT_U64: u64 = HEIGHT as u64;
-        const WIDTH_U64: u64 = WIDTH as u64;
-        const WHITE_U64: u64 = WHITE as u64;
-        for row in 0..HEIGHT_U64 {
-            for col in 0..WIDTH_U64 {
-                let color = if row % grid == 0 || col % grid == 0 {
-                    WHITE
-                } else {
-                    ((n*WHITE_U64*row*col) / (HEIGHT_U64*WIDTH_U64)) as u8 % WHITE
-                };
-
-                self.push_pixels(color, 1);
-            }
-        }
-    }
-
-    const REPEAT_WINDOW_SIZE: u32 = 1920 as u32;
 
     fn flush_pixels(&mut self) {
         // Data flows bytes per byte. The meaning of a byte is the following:
@@ -100,6 +39,7 @@ impl<'a> Drawing<'a> {
         // all glitchy. That means that the display cannot display arbitrary
         // images, and will only tolerate highly compressible images
         // (fortunately, 3d printing material is).
+        const REPEAT_WINDOW_SIZE: u32 = 1920 as u32;
 
         let encoded_color = ((self.color as u16 * 0x7C)/0x7F) as u8 | 0x80;
 
@@ -109,9 +49,9 @@ impl<'a> Drawing<'a> {
             self.total_pixel_count += 1;
             self.color_repeat -= 1;
 
-            let window_position = self.total_pixel_count % Self::REPEAT_WINDOW_SIZE;
+            let window_position = self.total_pixel_count % REPEAT_WINDOW_SIZE;
             if window_position > 0 {
-                let mut repeat = self.color_repeat.min(Self::REPEAT_WINDOW_SIZE - window_position);
+                let mut repeat = self.color_repeat.min(REPEAT_WINDOW_SIZE - window_position);
 
                 self.color_repeat -= repeat;
                 self.total_pixel_count += repeat;
@@ -128,7 +68,9 @@ impl<'a> Drawing<'a> {
         }
     }
 
-    pub fn push_pixels(&mut self, color: Color7, repeat: usize) {
+    pub fn push_pixels(&mut self, color: Color8, repeat: u32) {
+        let color: Color7 = color >> 1;
+
         if color == self.color {
             self.color_repeat += repeat as u32;
             return;
@@ -136,16 +78,14 @@ impl<'a> Drawing<'a> {
 
         self.flush_pixels();
 
-        debug_assert!(color & 0x80 == 0, "color isn't 7 bit: {:02x}", color);
-
         self.color = color;
         self.color_repeat = repeat as u32;
     }
 }
 
-impl<'a> Drop for Drawing<'a> {
+impl<'a> Drop for Framebuffer<'a> {
     fn drop(&mut self) {
         self.flush_pixels();
-        self.lcd.finish_drawing_raw();
+        self.lcd.stop_drawing_raw();
     }
 }

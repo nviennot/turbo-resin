@@ -5,7 +5,7 @@
 use core::mem::MaybeUninit;
 use crate::util::io::{Seek, BufReader, ReadPartial};
 
-type Color = u8;
+type Color8 = u8;
 
 use crate::consts::io::*;
 
@@ -14,21 +14,28 @@ use embassy::channel::mpsc::{self, Channel, Receiver, Sender};
 
 use alloc::vec::Vec;
 
+type Color4 = u8;
+
+#[inline]
+fn color_4bbp_to_8bpp(color: Color4) -> Color8 {
+    (color << 4) | color
+}
+
 impl Layer {
     pub async fn for_each_pixel<'a, R: ReadPartial + Seek>(
-        &'a self, reader: &'a mut R, mut f: impl FnMut(Color, u16),
+        &'a self, reader: &'a mut R, mut f: impl FnMut(Color8, u16),
     ) -> Result<(), R::Error> {
         reader.seek_from_start(self.data_address);
         let mut buf_reader = BufReader::new(reader, self.data_length as usize);
 
         let mut buffer: [MaybeUninit::<u8>; FILE_READER_BUFFER_SIZE] = MaybeUninit::uninit_array();
-        let mut color_repeat: Option<(u8, u8)> = None;
+        let mut color_repeat: Option<(Color4, u8)> = None;
 
         while let Some(data) = buf_reader.next(&mut buffer).await? {
             for b in data {
                 if let Some((color, repeat)) = color_repeat.take() {
                     let repeat = ((repeat as u16) << 8) | *b as u16;
-                    f(color, repeat);
+                    f(color_4bbp_to_8bpp(color), repeat);
                 } else {
                     let color = b >> 4;
                     let repeat = b & 0x0F;
@@ -36,7 +43,7 @@ impl Layer {
                         color_repeat = Some((color, repeat));
                         continue;
                     } else {
-                        f(color, repeat as u16);
+                        f(color_4bbp_to_8bpp(color), repeat as u16);
                     }
                }
             }

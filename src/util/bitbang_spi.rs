@@ -45,7 +45,8 @@ impl<Clk: Pin, Mosi: Pin, Miso: Pin, const SPI_FREQ_HZ: u32> Spi<Clk, Mosi, Miso
         );
     }
 
-    // no inline because we want to keep the timing consistant when throwing the rx value away
+    // no inline because we want to keep the timing consistant when throwing the
+    // rx value away
     #[inline(never)]
     pub fn xfer<T: PrimInt>(&mut self, mut tx: T) -> T {
         let mut rx = T::zero();

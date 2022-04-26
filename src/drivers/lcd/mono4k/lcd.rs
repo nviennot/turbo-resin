@@ -11,9 +11,7 @@ use embassy_stm32::rcc::low_level::RccPeripheral;
 
 use crate::drivers::delay_us;
 
-use super::Drawing;
-
-pub type Color = u8;
+use super::Framebuffer;
 
 pub struct Lcd {
     cs: Output<'static, p::PA4>,
@@ -50,8 +48,8 @@ impl Lcd {
         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
     ];
 
-    pub fn draw(&mut self) -> Drawing {
-        Drawing::new(self)
+    pub fn draw(&mut self) -> Framebuffer {
+        Framebuffer::new(self)
     }
 
     pub fn start_drawing_raw(&mut self) {
@@ -71,13 +69,13 @@ impl Lcd {
     }
 
     #[inline(always)]
-    pub fn draw_raw(&mut self, packed_pixels: u16) {
+    pub fn send_data(&mut self, data: u16) {
         // We use this small piece of code, it's much faster than the SPI API.
         // Note that the SPI is correctly configured (16bits frames) due to the
         // previous commands.
         unsafe {
             while !SPI1.sr().read().txe() {}
-            SPI1.dr().write(|w| w.set_dr(packed_pixels));
+            SPI1.dr().write(|w| w.set_dr(data));
         }
     }
 

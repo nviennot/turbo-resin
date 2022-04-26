@@ -1,50 +1,29 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use crate::drivers::lcd::Color8;
 use crate::consts::io::*;
 
-use super::{Lcd, Color};
+// Color is 4 bpp grayscale
+pub type Color4 = u8;
+pub const WHITE: u8 = 0x0F;
+pub const BLACK: u8 = 0x00;
 
-pub struct Drawing<'a> {
+use super::Lcd;
+
+pub struct Framebuffer<'a> {
     lcd: &'a mut Lcd,
-
     pending_pixels: u16,
     pending_pixels_cnt: u8, // modulo 4
 }
 
-impl<'a> Drawing<'a> {
+impl<'a> Framebuffer<'a> {
     pub fn new(lcd: &'a mut Lcd) -> Self {
         lcd.start_drawing_raw();
-        Self {
-            lcd,
-            pending_pixels: 0,
-            pending_pixels_cnt: 0,
-        }
+        Self { lcd, pending_pixels: 0, pending_pixels_cnt: 0 }
     }
 
-    pub fn set_all_black(mut self) {
-        self.push_pixels(0x00, (Lcd::ROWS as usize) * (Lcd::COLS as usize));
-    }
-
-    pub fn set_all_white(mut self) {
-        self.push_pixels(0x0F, (Lcd::ROWS as usize) * (Lcd::COLS as usize));
-    }
-
-    pub fn waves(mut self, mult: u32) {
-        for row in 0..Lcd::ROWS {
-            for col in 0..Lcd::COLS {
-                let color = if row % 100 == 0 || col % 100 == 0 {
-                    0x0F
-                } else {
-                    (((mult*16 * row as u32 * col as u32) / (Lcd::ROWS as u32 * Lcd::COLS as u32)) as u8) & 0x0F
-                };
-
-                self.push_pixels(color, 1);
-            }
-        }
-    }
-
-    pub fn push_pixels(&mut self, color: Color, mut repeat: usize) {
-        let color = color as u16;
+    pub fn push_pixels(&mut self, color: Color8, mut repeat: u32) {
+        let color = (color >> 4) as u16;
 
         if repeat == 0 { return }
 
@@ -64,7 +43,7 @@ impl<'a> Drawing<'a> {
         }
         if self.pending_pixels_cnt == 3 {
             repeat -= 1;
-            self.lcd.draw_raw((self.pending_pixels << 4) | color);
+            self.lcd.send_data((self.pending_pixels << 4) | color);
             self.pending_pixels_cnt = 0;
             if repeat == 0 { return }
         }
@@ -74,7 +53,7 @@ impl<'a> Drawing<'a> {
 
         // Now we flush pixels 4 by 4
         for _ in 0..repeat/4 {
-            self.lcd.draw_raw(packed_pixels);
+            self.lcd.send_data(packed_pixels);
         }
 
         // We may have some leftovers, save them for later
@@ -83,7 +62,7 @@ impl<'a> Drawing<'a> {
     }
 }
 
-impl<'a> Drop for Drawing<'a> {
+impl<'a> Drop for Framebuffer<'a> {
     fn drop(&mut self) {
         // If there's pending pixels, oh well.
         if self.pending_pixels_cnt > 0 {

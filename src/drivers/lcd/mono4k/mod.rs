@@ -4,5 +4,5 @@
 mod lcd;
 pub use lcd::*;
 
-mod drawing;
-pub use drawing::*;
+mod framebuffer;
+pub use framebuffer::*;

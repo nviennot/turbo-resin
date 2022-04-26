@@ -3,17 +3,20 @@
 // Based on https://github.com/sn4k3/UVtools/blob/master/UVtools.Core/FileFormats/ChituboxFile.cs
 
 use core::mem::MaybeUninit;
-use crate::drivers::lcd::Color7;
+use crate::drivers::lcd::Color8;
 use crate::util::io::{Seek, BufReader, ReadPartial};
-
 use crate::consts::io::*;
-
 use embassy::blocking_mutex::raw::NoopRawMutex;
 use embassy::channel::mpsc::{self, Channel, Receiver, Sender};
-
 use alloc::vec::Vec;
-
 use crate::util::io::Read;
+
+type Color7 = u8; // We are spitting out 7bit per pixels colors.
+
+#[inline]
+fn color_7bpp_to_8bpp(color: Color7) -> Color8 {
+    (color << 1) | (color >> 6)
+}
 
 impl Layer {
     pub async fn for_each_pixels<'a, R: ReadPartial + Seek>(
@@ -21,7 +24,7 @@ impl Layer {
         reader: &'a mut R,
         layer_index: u32,
         xor_key: u32,
-        mut f: impl FnMut(Color7, u32),
+        mut f: impl FnMut(Color8, u32),
     ) -> Result<(), R::Error> {
 
         let mut color: Color7 = 0;
@@ -45,7 +48,7 @@ impl Layer {
                         if byte & 0x80 != 0 {
                             rle_state = RleState::WaitingForHeader;
                         } else {
-                            f(color, 1);
+                            f(color_7bpp_to_8bpp(color), 1);
                         }
                     }
                     RleState::WaitingForHeader => {
@@ -66,11 +69,16 @@ impl Layer {
                 }
 
                 if rle_state == RleState::WaitingForRLEByte(0) {
-                    f(color, repeat);
+                    f(color_7bpp_to_8bpp(color), repeat);
                     rle_state = RleState::None;
                 }
             }
-        }).await
+        }).await?;
+
+        // TODO return error
+        assert!(rle_state == RleState::None);
+
+        Ok(())
     }
 
     pub async fn for_each_bytes<'a, R: ReadPartial + Seek>(

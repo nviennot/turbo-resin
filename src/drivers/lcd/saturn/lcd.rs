@@ -13,7 +13,23 @@ use crate::consts::lcd::*;
 use crate::drivers::{delay_us, delay_ms};
 use crate::util::bitbang_spi::Spi;
 
-use super::Drawing;
+use super::Framebuffer;
+use super::super::Canvas;
+
+const CMD_PREFIX: u8 = 0xfe;
+const REPLY_HEADER: u16 = 0xfbfd;
+
+#[derive(Debug, Clone, Copy)]
+#[repr(u8)]
+enum Command {
+    MaskDisplay = 0x00,
+    Unknown03 = 0x03,
+    GetResolution = 0x04,
+    UnmaskDisplay = 0x08,
+    Unknown10 = 0x10,
+    Unknown20 = 0x20,
+    StartDrawing = 0xfd,
+}
 
 pub struct Lcd {
     cs: Output<'static, p::PA15>,
@@ -47,8 +63,8 @@ impl Lcd {
         }
     }
 
-    pub fn draw(&mut self) -> Drawing {
-        Drawing::new(self)
+    pub fn draw(&mut self) -> Canvas {
+        Canvas::new(Framebuffer::new(self))
     }
 
     pub fn start_drawing_raw(&mut self) {
@@ -61,11 +77,12 @@ impl Lcd {
         self.cs.set_low();
     }
 
+    #[inline]
     pub fn send_data(&mut self, data: u8) {
         self.spi.xfer(data);
     }
 
-    pub fn finish_drawing_raw(&mut self) {
+    pub fn stop_drawing_raw(&mut self) {
         self.cs.set_high();
         self.cmd(Command::UnmaskDisplay);
     }
@@ -102,19 +119,4 @@ impl Lcd {
 
         if toggle_cs { self.cs.set_high(); }
     }
-}
-
-const CMD_PREFIX: u8 = 0xfe;
-const REPLY_HEADER: u16 = 0xfbfd;
-
-#[derive(Debug, Clone, Copy)]
-#[repr(u8)]
-enum Command {
-    MaskDisplay = 0x00,
-    Unknown03 = 0x03,
-    GetResolution = 0x04,
-    UnmaskDisplay = 0x08,
-    Unknown10 = 0x10,
-    Unknown20 = 0x20,
-    StartDrawing = 0xfd,
 }
