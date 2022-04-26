@@ -781,7 +781,7 @@ dependencies = [
 [[package]]
 name = "lvgl"
 version = "0.5.2"
-source = "git+https://github.com/nviennot/lvgl-rs.git#d1caf070d8df5b1841de0f0edb71758601522c8d"
+source = "git+https://github.com/nviennot/lvgl-rs.git#b1e2be16c3205f4918c5558d0dc9daa257b610ff"
 dependencies = [
  "bitflags",
  "cstr_core",
@@ -796,7 +796,7 @@ dependencies = [
 [[package]]
 name = "lvgl-codegen"
 version = "0.5.2"
-source = "git+https://github.com/nviennot/lvgl-rs.git#d1caf070d8df5b1841de0f0edb71758601522c8d"
+source = "git+https://github.com/nviennot/lvgl-rs.git#b1e2be16c3205f4918c5558d0dc9daa257b610ff"
 dependencies = [
  "Inflector",
  "lazy_static",
@@ -809,7 +809,7 @@ dependencies = [
 [[package]]
 name = "lvgl-sys"
 version = "0.5.2"
-source = "git+https://github.com/nviennot/lvgl-rs.git#d1caf070d8df5b1841de0f0edb71758601522c8d"
+source = "git+https://github.com/nviennot/lvgl-rs.git#b1e2be16c3205f4918c5558d0dc9daa257b610ff"
 dependencies = [
  "bindgen",
  "cc",
