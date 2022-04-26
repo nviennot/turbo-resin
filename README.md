@@ -66,48 +66,33 @@ For the target, use `thumbv7em-none-eabihf`. In a nutshell:
 
 ```bash
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
+source $HOME/.cargo/env
 rustup component add llvm-tools-preview
 cargo install cargo-binutils
-# Ubuntu
-sudo apt install gcc-arm-none-eabi gdb-multiarch libclang-dev openocd
+# Ubuntu/Debian
+sudo apt install -y gcc-arm-none-eabi gdb-multiarch libclang-dev openocd
 # macOS
 brew install armmbed/formulae/arm-none-eabi-gcc openocd
 ```
 
-Finally, export this environment variable set to the root of the project.
-It's for the lvgl dependency so it locates the `lv_conf.h` file.
+If you are using vscode, replace `saturn` with the printer of your choice in
+`~/.vscode/settings.json`
 
-```
-export DEP_LV_CONFIG_PATH=`pwd`
-```
-
-Also you must init submodules:
-
-```
-git submodule update --init --recursive
-```
+Then you are ready for building:
 
 ### Build
 
 ```
-» make build PRINTER=mono4k
-cargo build --release
-    Finished release [optimized + debuginfo] target(s) in 0.15s
-cargo objdump --release -- -h | ./misc/rom_stats.py
-.vector_table  DATA     0.3K (0.1%)
-.lvgl.text     TEXT   136.3K (53.3%)
-.lvgl.rodata   DATA    27.8K (10.9%)
-.libs.text     TEXT    39.0K (15.2%)
-.libs.rodata   DATA     8.4K (3.3%)
-.text          TEXT    13.1K (5.1%)
-.rodata        DATA     2.8K (1.1%)
-.data          DATA     0.1K (0.1%)
-.bss           BSS     65.2K (67.9%)
-.uninit        BSS      0.1K (0.1%)
-
-Total ROM        227.8K (89.0%)
-Total RAM         65.4K (68.1%)
+» export PRINTER=saturn # replace with the printer your choice (mono4k is the other option)
+» make build
+... lots of outputs ...
+Total FLASH      271.3K (53.0%)
+Total RAM         71.7K (56.0%)
 ```
+
+This will create a `target/thumbv7em-none-eabihf/debug/app` file.
+
+Note that you can use `make build BUILD=release` for a release build.
 
 ## Connect to the printer
 
@@ -179,6 +164,9 @@ Quit anyway? (y or n) [answered Y; input not from terminal]
 ```
 
 ## Debugging
+
+Console output with `make start_jlink_rtt` or `make start_probe_run_rtt` (with
+openocd)
 
 Use `make attach`, `c`, and `ctrl+c` to get a gdb instance connected to the device.
 
