@@ -18,7 +18,8 @@ pub mod display {
 pub mod lcd {
     pub const WIDTH: u32 = 3840;
     pub const HEIGHT: u32 = 2400;
-    pub const SPI_FREQ_HZ: u32 = 10_000_000;
+    // The original firmware uses 2Mhz, we'll bump that up a little
+    pub const SPI_FREQ_HZ: u32 = 5_000_000;
 
     pub const BITSTREAM_HEADER_OFFSET: u32 = 0x79000;
     pub const BITSTREAM_MAGIC: u32 = 0x12FD0022;
@@ -89,4 +90,7 @@ pub mod touch_screen {
 
     pub const TOP_LEFT: (u16, u16) = (2230, 100);
     pub const BOTTOM_RIGHT: (u16, u16) = (4000, 1870);
+
+    // Original firmware uses 650kHz, but that seems a bit low
+    pub const SPI_FREQ_HZ: u32 = 2_000_000;
 }

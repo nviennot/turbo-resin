@@ -130,7 +130,7 @@ mod medium_priority_tasks {
                 }
             }).await?;
 
-            let mut file = File::new(&mut fs, &mut volume, &root, "VALIDA~2.CTB", Mode::ReadOnly).await?;
+            let mut file = File::new(&mut fs, &mut volume, &root, "TEST_P~1.CTB", Mode::ReadOnly).await?;
 
             use file_formats::ctb::*;
             let (layers_offset, num_layers, xor_key) = {
@@ -144,7 +144,7 @@ mod medium_priority_tasks {
             let start_cycles = read_cycles();
             //lcd.draw().set_all_black();
 
-            for layer_index in 5..num_layers {
+            for layer_index in 0..num_layers {
                 // TODO Have proper errors
                 file.seek_from_start(layers_offset + layer_index * core::mem::size_of::<Layer>() as u32).expect("bad file offset");
                 let layer = file.read_obj::<Layer>().await?;
@@ -346,7 +346,6 @@ fn main() -> ! {
 
     // Medium priority executor. It interrupts the low priority tasks (UI rendering)
     {
-
         let lvgl_ticks = lvgl.ticks();
         let touch_screen = machine.touch_screen;
         let irq = interrupt::take!(CAN1_RX0);

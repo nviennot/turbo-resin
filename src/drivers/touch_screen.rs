@@ -191,7 +191,7 @@ impl ADS7846 {
     ) -> Self {
         let cs = Output::new(cs, Level::High, Speed::Medium);
         let cfg = Config::default();
-        let spi = Spi::new(spi, sck, mosi, miso, dma_tx, dma_rx, 2.mhz(), cfg);
+        let spi = Spi::new(spi, sck, mosi, miso, dma_tx, dma_rx, SPI_FREQ_HZ.hz(), cfg);
 
         Self { cs, spi }
     }
