@@ -24,7 +24,7 @@ impl<'a> Framebuffer<'a> {
         // - if its 0x80 bit is set, then it means, draw a pixel of shade
         //   corresponding to the remaining 7 bits.
         // - otherwise, the byte represents an integer n for which the display
-        //   should repeat the previously drawn color pixel draw n times.
+        //   should repeat the previously drawn color pixel n times.
         //   However, they repeat should never cross the column boundary of 0
         //   and 1920 pixels. This seems to suggest that the FPGA has two 1080p
         //   framebuffers stiched together.
@@ -35,10 +35,10 @@ impl<'a> Framebuffer<'a> {
         // missing 3 color shades.
 
         // Also another interesting note, the framebuffer can only receive up to
-        // ~2.8MB of data. Pushing more than that and the display starts to look
-        // all glitchy. That means that the display cannot display arbitrary
-        // images, and will only tolerate highly compressible images
-        // (fortunately, 3d printing material is).
+        // ~2.8MB of compressed data. Pushing more than that and the display
+        // starts to look all glitchy. That means that the display cannot display
+        // arbitrary images, and will only tolerate highly compressible images
+        // (fortunately, 3d printing images is).
         const REPEAT_WINDOW_SIZE: u32 = 1920 as u32;
 
         let encoded_color = ((self.color as u16 * 0x7C)/0x7F) as u8 | 0x80;
