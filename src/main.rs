@@ -13,6 +13,7 @@
 #![feature(core_intrinsics)]
 #![feature(future_join)]
 #![feature(future_poll_fn)]
+#![feature(const_maybe_uninit_uninit_array)]
 
 #![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code, unused_unsafe)]
 
