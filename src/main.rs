@@ -56,7 +56,7 @@ use drivers::{
     touch_screen::{TouchEvent, TouchScreen},
     display::Display as RawDisplay,
     zaxis,
-    usb::UsbHost, lcd::Lcd, ext_flash::ExtFlash,
+    usb::UsbHost, lcd::Lcd,
 };
 
 use spi_memory::prelude::*;
@@ -74,7 +74,6 @@ static Z_AXIS: Forever<zaxis::MotionControlAsync> = Forever::new();
 static USB_HOST: Forever<UsbHost> = Forever::new();
 static TASK_RUNNER: Forever<TaskRunner<ui::Task>> = Forever::new();
 static LCD: Forever<Lcd> = Forever::new();
-static EXT_FLASH: Forever<ExtFlash> = Forever::new();
 
 mod maximum_priority_tasks {
     use super::*;
@@ -285,6 +284,7 @@ fn main() -> ! {
 
     let machine = {
         let p = {
+            #[allow(unused_mut)]
             let mut config = Config::default();
             #[cfg(feature="gd32f307ve")]
             {
@@ -309,20 +309,15 @@ fn main() -> ! {
         Machine::new(cp, p)
     };
 
-    /*
+    #[cfg(feature="mono4k")]
     Z_AXIS.put(zaxis::MotionControlAsync::new(
         SharedWithInterrupt::new(machine.stepper),
         machine.z_bottom_sensor,
     ));
-    */
-
-    //let lcd_channel = LcdChannel::new();
 
     let (lvgl, display) = lvgl_init(machine.display);
 
     USB_HOST.put(machine.usb_host);
-
-    EXT_FLASH.put(machine.ext_flash);
 
     let lcd = LCD.put(machine.lcd);
     lcd.init();
@@ -382,10 +377,6 @@ pub mod runtime {
     #[alloc_error_handler]
     fn oom(l: core::alloc::Layout) -> ! {
         panic!("Out of memory. Failed to allocate {} bytes", l.size());
-    }
-
-    pub fn print_stack_size() {
-        debug!("stack size: {:x?}",  0x20000000 + 96*1024 - ((&mut [0u8;1]).as_ptr() as u32));
     }
 
     #[inline(never)]

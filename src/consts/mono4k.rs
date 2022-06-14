@@ -1,28 +1,37 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+use embassy_stm32::peripherals as p;
 
 pub mod system {
-    pub const CLOCK_SPEED_MHZ: u32 = 168;
+    pub const CLOCK_SPEED_MHZ: u32 = 120;
 }
 
+/*
+// We don't need the external flash on the mono 4k.
 pub mod ext_flash {
-    pub const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
-    pub const SPI_FREQ_HZ: u32 = 20_000_000;
+    const FLASH_SIZE: u32 = 16*1024*1024; // 16MB
 }
+*/
 
 pub mod display {
-    pub const WIDTH: u16 = 480;
-    pub const HEIGHT: u16 = 320;
+    pub const WIDTH: u16 = 320;
+    pub const HEIGHT: u16 = 240;
     pub const LVGL_BUFFER_LEN: usize = 7680; // 1/10th of the display size
+
+    pub mod pins {
+        use super::super::p;
+        pub const SUB_BANK: usize = 1;
+        pub const DATAREG_ADDR_BIT: usize = 16;
+        pub const AF: u8 = 0;
+        pub type BACKLIGHT = p::PA10;
+        pub type CS = p::PD7;
+        pub type RESET = p::PC6;
+        pub type DATAREG = p::PD11;
+    }
 }
 
 pub mod lcd {
     pub const WIDTH: u32 = 3840;
     pub const HEIGHT: u32 = 2400;
-    // The original firmware uses 2Mhz, we'll bump that up a little
-    pub const SPI_FREQ_HZ: u32 = 5_000_000;
-
-    pub const BITSTREAM_HEADER_OFFSET: u32 = 0x79000;
-    pub const BITSTREAM_MAGIC: u32 = 0x12FD0022;
 }
 
 pub mod zaxis {
@@ -80,17 +89,10 @@ pub mod touch_screen {
     // The higher the more sensitive to touches.
     // Under full pressure, pressure == 2.0
     // Under light touch, pressure == 6.0
-    pub const PRESSURE_THRESHOLD: f32 = 2.5;
+    pub const PRESSURE_THRESHOLD: f32 = 5.0;
 
     pub const STABLE_X_Y_VALUE_TOLERANCE: u16 = 8; // in pixels
     // Number of consequtive samples to validate
     pub const NUM_STABLE_SAMPLES: u8 = 8;
     pub const SAMPLE_DELAY_MS: u64 = 1;
-    pub const SLEEP_DELAY_MS: u64 = 20;
-
-    pub const TOP_LEFT: (u16, u16) = (2230, 100);
-    pub const BOTTOM_RIGHT: (u16, u16) = (4000, 1870);
-
-    // Original firmware uses 650kHz, but that seems a bit low
-    pub const SPI_FREQ_HZ: u32 = 2_000_000;
 }

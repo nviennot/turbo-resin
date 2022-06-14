@@ -48,6 +48,10 @@ impl Lcd {
         0x88, 0x99, 0xaa, 0xbb, 0xcc, 0xdd, 0xee, 0xff
     ];
 
+    pub fn init(&self) {
+        // Nothing to do.
+    }
+
     pub fn draw(&mut self) -> Framebuffer {
         Framebuffer::new(self)
     }

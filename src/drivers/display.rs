@@ -10,36 +10,28 @@ use embassy_stm32::peripherals as p;
 use crate::consts::display::*;
 
 pub struct Display {
-    pub reset: Output<'static, p::PB12>,
-    pub backlight: Output<'static, p::PG8>,
+    pub reset: Output<'static, pins::RESET>,
+    pub backlight: Output<'static, pins::BACKLIGHT>,
 }
 
 impl Display {
-    // We use Bank1 (0x60000000) to address the display.
-    // Bank1 PSRAM 4 selection: HADDR[27:26] = 11
-    // The A16 wire is used to select the DATA or CMD register. Its address is
-    // 0x00020000 = 1 << (16 + 1) (The +1 is because of the 16 bit addressing
-    // mode as opposed to 8 bit).
-    const TFT_CMD:  *mut u16 = 0x6c00_0000u32 as *mut u16;
-    const TFT_DATA: *mut u16 = 0x6c00_2000u32 as *mut u16;
+    const FSMC_BANK_ADDR: usize = 0x6000_0000; // Bank 1
+    const FSMC_SUB_BANK_ADDR: usize = Self::FSMC_BANK_ADDR | ((pins::SUB_BANK-1) << 26);
 
-    /*
-    pub const FULL_SCREEN: Rectangle = Rectangle::new(
-        Point::new(0,0),
-        Size::new(Self::WIDTH as u32, Self::HEIGHT as u32)
-    );
-    */
+    const TFT_CMD:  *mut u16 = Self::FSMC_SUB_BANK_ADDR as *mut u16;
+    // The +1 is because of the 16 bit addressing mode as opposed to 8 bit.
+    // This enables the data pin.
+    const TFT_DATA: *mut u16 = (Self::FSMC_SUB_BANK_ADDR | (1 << (pins::DATAREG_ADDR_BIT+1))) as *mut u16;
 
-    #[inline(never)]
     pub fn new(
-        reset: p::PB12,
-        backlight: p::PG8,
+        reset: pins::RESET,
+        backlight: pins::BACKLIGHT,
 
         output_enable: p::PD4,
         write_enable: p::PD5,
-        cs: p::PG12,
+        cs: pins::CS,
 
-        a12: p::PG2,
+        datareg: pins::DATAREG,
 
         d0: p::PD14,
         d1: p::PD15,
@@ -68,30 +60,30 @@ impl Display {
 
         unsafe {
             // PD4: EXMC_NOE: Output Enable
-            output_enable.set_as_af(12, AFType::OutputPushPull);
+            output_enable.set_as_af(pins::AF, AFType::OutputPushPull);
             // PD5: EXMC_NWE: Write enable
-            write_enable.set_as_af(12, AFType::OutputPushPull);
+            write_enable.set_as_af(pins::AF, AFType::OutputPushPull);
             // PD7: EXMC_NE0: Chip select
-            cs.set_as_af(12, AFType::OutputPushPull);
+            cs.set_as_af(pins::AF, AFType::OutputPushPull);
             // A12: Selects the Command or Data register
-            a12.set_as_af(12, AFType::OutputPushPull);
+            datareg.set_as_af(pins::AF, AFType::OutputPushPull);
 
-            d0.set_as_af(12, AFType::OutputPushPull);
-            d1.set_as_af(12, AFType::OutputPushPull);
-            d2.set_as_af(12, AFType::OutputPushPull);
-            d3.set_as_af(12, AFType::OutputPushPull);
-            d4.set_as_af(12, AFType::OutputPushPull);
-            d5.set_as_af(12, AFType::OutputPushPull);
-            d6.set_as_af(12, AFType::OutputPushPull);
-            d7.set_as_af(12, AFType::OutputPushPull);
-            d8.set_as_af(12, AFType::OutputPushPull);
-            d9.set_as_af(12, AFType::OutputPushPull);
-            d10.set_as_af(12, AFType::OutputPushPull);
-            d11.set_as_af(12, AFType::OutputPushPull);
-            d12.set_as_af(12, AFType::OutputPushPull);
-            d13.set_as_af(12, AFType::OutputPushPull);
-            d14.set_as_af(12, AFType::OutputPushPull);
-            d15.set_as_af(12, AFType::OutputPushPull);
+            d0.set_as_af(pins::AF, AFType::OutputPushPull);
+            d1.set_as_af(pins::AF, AFType::OutputPushPull);
+            d2.set_as_af(pins::AF, AFType::OutputPushPull);
+            d3.set_as_af(pins::AF, AFType::OutputPushPull);
+            d4.set_as_af(pins::AF, AFType::OutputPushPull);
+            d5.set_as_af(pins::AF, AFType::OutputPushPull);
+            d6.set_as_af(pins::AF, AFType::OutputPushPull);
+            d7.set_as_af(pins::AF, AFType::OutputPushPull);
+            d8.set_as_af(pins::AF, AFType::OutputPushPull);
+            d9.set_as_af(pins::AF, AFType::OutputPushPull);
+            d10.set_as_af(pins::AF, AFType::OutputPushPull);
+            d11.set_as_af(pins::AF, AFType::OutputPushPull);
+            d12.set_as_af(pins::AF, AFType::OutputPushPull);
+            d13.set_as_af(pins::AF, AFType::OutputPushPull);
+            d14.set_as_af(pins::AF, AFType::OutputPushPull);
+            d15.set_as_af(pins::AF, AFType::OutputPushPull);
         }
 
         #[cfg(feature="mono4k")]
