@@ -103,13 +103,13 @@ impl UsbHost {
                     );
 
                     REGS.hnptxfsiz().write(|w| {
-                        w.set_nptxfsa(RX_FIFO_LEN);
-                        w.set_nptxfd(NON_PERIODIC_TX_FIFO_LEN);
+                        w.set_sa(RX_FIFO_LEN);
+                        w.set_fd(NON_PERIODIC_TX_FIFO_LEN);
                     });
 
                     REGS.hptxfsiz().write(|w| {
-                        w.set_ptxsa(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN);
-                        w.set_ptxfsiz(PERIODIC_TX_FIFO_LEN);
+                        w.set_sa(RX_FIFO_LEN+NON_PERIODIC_TX_FIFO_LEN);
+                        w.set_fd(PERIODIC_TX_FIFO_LEN);
                     });
 
                     // Flush FIFOs, it must be done, otherwise, fs_gnptxsts.nptxfsav is all garbage.

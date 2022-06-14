@@ -33,6 +33,8 @@ export MCU := $(shell \
 	start_jlink_rtt start_probe_run_rtt restore_rom check \
 	check_printer check_submodules
 
+all: build;
+
 check_printer:
 ifeq (${MCU},)
 	$(error Try with PRINTER=mono4k or PRINTER=lv3 PRINTER=saturn)

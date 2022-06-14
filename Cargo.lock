@@ -434,13 +434,25 @@ dependencies = [
 ]
 
 [[package]]
+name = "embassy-cortex-m"
+version = "0.1.0"
+dependencies = [
+ "atomic-polyfill",
+ "cfg-if",
+ "cortex-m",
+ "critical-section",
+ "embassy",
+ "embassy-hal-common",
+ "embassy-macros",
+]
+
+[[package]]
 name = "embassy-hal-common"
 version = "0.1.0"
 dependencies = [
  "cortex-m",
  "embassy",
  "num-traits",
- "usb-device",
 ]
 
 [[package]]
@@ -465,11 +477,16 @@ dependencies = [
  "cortex-m-rt",
  "critical-section",
  "embassy",
+ "embassy-cortex-m",
  "embassy-hal-common",
  "embassy-macros",
+ "embassy-usb",
  "embedded-hal 0.2.7",
- "embedded-hal 1.0.0-alpha.7",
+ "embedded-hal 1.0.0-alpha.8",
  "embedded-hal-async",
+ "embedded-io",
+ "embedded-storage",
+ "embedded-storage-async",
  "futures",
  "nb 1.0.0",
  "proc-macro2",
@@ -479,6 +496,15 @@ dependencies = [
  "seq-macro",
  "stm32-fmc",
  "stm32-metapac",
+ "vcell",
+]
+
+[[package]]
+name = "embassy-usb"
+version = "0.1.0"
+dependencies = [
+ "embassy",
+ "heapless",
 ]
 
 [[package]]
@@ -516,19 +542,27 @@ dependencies = [
 
 [[package]]
 name = "embedded-hal"
-version = "1.0.0-alpha.7"
-source = "git+https://github.com/embassy-rs/embedded-hal?branch=embassy2#bc0e0ca74a64d65d1b6c994f186bb89eeb364965"
+version = "1.0.0-alpha.8"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c3babfc7fd332142a0b11aebf592992f211f4e01b6222fb04b03aba1bd80018d"
 dependencies = [
  "nb 1.0.0",
 ]
 
 [[package]]
 name = "embedded-hal-async"
-version = "0.0.1"
-source = "git+https://github.com/embassy-rs/embedded-hal?branch=embassy2#bc0e0ca74a64d65d1b6c994f186bb89eeb364965"
+version = "0.1.0-alpha.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "022249738afde9b2b755a28a367ae20c9367e8e9c24b9aaf60bcc9255a255ec5"
 dependencies = [
- "embedded-hal 1.0.0-alpha.7",
+ "embedded-hal 1.0.0-alpha.8",
 ]
+
+[[package]]
+name = "embedded-io"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "36673b79844ff4ec0e3f00aeca0b2cfff564ff6739ab9801d13f45a8ec6cc1c7"
 
 [[package]]
 name = "embedded-sdmmc"
@@ -538,6 +572,21 @@ dependencies = [
  "byteorder",
  "embedded-hal 0.2.7",
  "log",
+]
+
+[[package]]
+name = "embedded-storage"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "156d7a2fdd98ebbf9ae579cbceca3058cff946e13f8e17b90e3511db0508c723"
+
+[[package]]
+name = "embedded-storage-async"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "5ff04af74e47e9bb4315bd7aa2b01f3d1b05f33c03a6c4e9c3b20e9ce9cd8d79"
+dependencies = [
+ "embedded-storage",
 ]
 
 [[package]]
@@ -1376,12 +1425,6 @@ name = "unicode-xid"
 version = "0.2.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8ccb82d61f80a663efe1f787a51b16b5a51e3314d6ac365b08639f52387b33f3"
-
-[[package]]
-name = "usb-device"
-version = "0.2.8"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6be90410d4772074ea49525e2e753b65920b94b57eee21a6ef7b6a6fe6296245"
 
 [[package]]
 name = "vcell"

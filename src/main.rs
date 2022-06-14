@@ -36,11 +36,15 @@ use lvgl::core::{Lvgl, TouchPad, Display, ObjExt};
 use embassy::{
     time::{Instant, Duration, Timer},
     util::Forever,
-    executor::InterruptExecutor,
-    interrupt::InterruptExt,
     blocking_mutex::CriticalSectionMutex as Mutex,
 };
-use embassy_stm32::{Config, interrupt, time::U32Ext};
+use embassy_stm32::{
+    Config,
+    interrupt,
+    interrupt::InterruptExt,
+    executor::InterruptExecutor,
+    time::U32Ext,
+};
 
 use embedded_sdmmc::Mode;
 
@@ -352,14 +356,13 @@ fn main() -> ! {
         irq.set_priority(interrupt::Priority::P6);
         static EXECUTOR_MEDIUM: Forever<InterruptExecutor<interrupt::CAN1_RX0>> = Forever::new();
         let executor = EXECUTOR_MEDIUM.put(InterruptExecutor::new(irq));
-        executor.start(|spawner| {
-            spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
-            spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
-            spawner.spawn(medium_priority_tasks::main_task()).unwrap();
-            spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
+        let spawner = executor.start();
 
-            //spawner.spawn(medium_priority_tasks::lcd_task(lcd_receiver)).unwrap();
-        });
+        spawner.spawn(medium_priority_tasks::touch_screen_task(touch_screen)).unwrap();
+        spawner.spawn(medium_priority_tasks::lvgl_tick_task(lvgl_ticks)).unwrap();
+        spawner.spawn(medium_priority_tasks::main_task()).unwrap();
+        spawner.spawn(medium_priority_tasks::usb_stack()).unwrap();
+        //spawner.spawn(medium_priority_tasks::lcd_task(lcd_receiver)).unwrap();
     }
 
     // TODO release the stack
