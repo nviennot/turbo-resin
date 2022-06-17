@@ -82,8 +82,15 @@ start_jlink: | check_printer
 start_jlink_rtt:
 	JLinkRTTClient
 
+# probe-run doesn't know about the gd32f307ve. We'll fall back on a close stm32
+# equivalent.
+# You need to run `cargo install probe-run` first.
 start_probe_run_rtt: | check_printer
+ifeq (${MCU},gd32f307ve)
+	probe-run --chip stm32f103ze --no-flash ${TARGET_ELF}
+else
 	probe-run --chip ${MCU} --no-flash ${TARGET_ELF}
+endif
 
 misc/orig-firmware-$(PRINTER).bin:
 	@echo Dump your original firmare, and place it here: $@
