@@ -7,8 +7,6 @@ OPENOCD_INTERFACE ?= misc/openocd-stlink.cfg
 
 #########################################################
 
-export DEP_LV_CONFIG_PATH := $(PWD)
-
 BUILD_FLAGS += --features $(PRINTER)
 
 ifeq ($(BUILD),release)
@@ -25,6 +23,11 @@ export MCU := $(shell \
 	grep -A10000 '^\[features\]$$' Cargo.toml | \
 	grep '^$(PRINTER)\b =' | \
 	sed -E 's/.*\["([^"]+)".*/\1/' \
+)
+
+export DEP_LV_CONFIG_PATH := $(PWD)/lv_conf/$(shell \
+	grep LVCONF_PATH src/consts/$(PRINTER).rs | \
+	sed -E 's/.*=.*"(.*)".*/\1/' \
 )
 
 #########################################################

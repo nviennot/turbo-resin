@@ -15,7 +15,9 @@ pub mod ext_flash {
 pub mod display {
     pub const WIDTH: u16 = 320;
     pub const HEIGHT: u16 = 240;
-    pub const LVGL_BUFFER_LEN: usize = 7680; // 1/10th of the display size
+    pub const LVCONF_PATH: &str = "320x240"; // Used by the Makefile
+    // Normally 1/10th of the display size
+    pub const LVGL_BUFFER_LEN: usize = 7680;
 
     pub mod pins {
         use super::super::p;
