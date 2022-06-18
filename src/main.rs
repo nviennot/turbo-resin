@@ -321,13 +321,10 @@ fn main() -> ! {
 
     let lcd = LCD.put(machine.lcd);
     lcd.init();
-
+    //lcd.draw().checker(100);
     //debug!("FPGA version: {:x}", lcd.get_version());
 
     TASK_RUNNER.put(TaskRunner::new());
-
-    //let mut lcd = machine.lcd;
-    //lcd.draw_waves(16);
 
     // Maximum priority for the motion control of the stepper motor.
     // as we need to deliver precise pulses with micro-second accuracy.

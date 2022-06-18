@@ -48,7 +48,6 @@ impl Machine {
             p.PG15, p.PB3, p.PB4, p.PB5, p.SPI3, p.DMA1_CH2, p.DMA1_CH5
         ).expect("Failed to initialize the external spi flash");
 
-
         /*
             This is how the saturn is configured. Not sure what all these pins do.
             use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
@@ -142,6 +141,18 @@ impl Machine {
             p.PA4, p.PA5, p.PA6, p.PA7,
             p.SPI1, p.DMA1_CH2, p.DMA1_CH3,
         );
+
+
+        //--------------------------
+        // UV Light
+        //--------------------------
+        #[cfg(feature="mono4k")]
+        {
+            // This turns on the UV light:
+            // use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
+            // core::mem::forget(Output::new(p.PA1, Level::High, Speed::Low)); // PWM
+            // core::mem::forget(Output::new(p.PB7, Level::High, Speed::Low)); // Master switch
+        }
 
         //--------------------------
         // USB Host

@@ -83,13 +83,11 @@ You are ready for building and flashing the firmware.
 If you are using vscode, replace `saturn` with the printer of your choice in
 `./.vscode/settings.json`
 
-Configure the `PRINTER`, `PROBE`, and `FLASH_WITH` variables in the Makefile
-by either modifying the Makefile, or exporting the variables in your shell
-instead of modifying the Makefile.
-
+Configure the `PRINTER`, `PROBE`, and `FLASH_WITH` variables in the Makefile.
 * `PRINTER` can be `mono4k` or `saturn`.
 * `PROBE` can be `jlink` or `stlink`.
-* `FLASH_WITH` can be `jlink+gdb`, or `openocd+gdb`, or `probe-run`
+* `FLASH_WITH` can be `jlink+gdb`, or `openocd+gdb`, or `probe-run`. Pick the
+  one that works for you.
 
 ### Connect to the printer
 

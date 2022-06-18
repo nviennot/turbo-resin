@@ -10,6 +10,7 @@ use embassy::time::{Duration, Timer};
 use embassy_stm32::rcc::low_level::RccPeripheral;
 
 use crate::drivers::delay_us;
+use crate::drivers::lcd::Canvas;
 
 use super::Framebuffer;
 
@@ -52,8 +53,8 @@ impl Lcd {
         // Nothing to do.
     }
 
-    pub fn draw(&mut self) -> Framebuffer {
-        Framebuffer::new(self)
+    pub fn draw(&mut self) -> Canvas {
+        Canvas::new(Framebuffer::new(self))
     }
 
     pub fn start_drawing_raw(&mut self) {
