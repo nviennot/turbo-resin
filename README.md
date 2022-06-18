@@ -46,6 +46,7 @@ Elegoo, and Creality printers.
 
 * [Elliot from Tiny Labs](https://github.com/tinylabs)
 * [@gnivler](https://github.com/gnivler)
+* [Madeleine](https://github.com/madelbrot)
 
 Thank you!
 
