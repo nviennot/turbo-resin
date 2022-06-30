@@ -116,4 +116,5 @@ You can also come and ask for guidance on our [Discord channel](https://discord.
 
 ## License
 
-Turbo Resin is licensed under the GPLv3
+Turbo Resin is licensed under the GPLv3, except for the USB Host stack, which is
+license under Apache 2.0 or MIT at your choice.

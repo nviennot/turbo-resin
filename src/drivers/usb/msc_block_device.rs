@@ -1,3 +1,4 @@
+// SPDX-License-Identifier: Apache-2.0 OR MIT
 
 use embedded_sdmmc::{BlockDevice, Block, BlockIdx, BlockCount, Timestamp, TimeSource, Controller};
 use core::cell::RefCell;
