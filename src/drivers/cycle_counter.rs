@@ -1,4 +1,4 @@
-use embassy::util::Forever;
+use embassy_util::Forever;
 use cortex_m::peripheral::DWT;
 
 use crate::consts::system::*;

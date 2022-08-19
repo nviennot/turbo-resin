@@ -12,7 +12,6 @@
 #![feature(generic_associated_types)]
 #![feature(core_intrinsics)]
 #![feature(future_join)]
-#![feature(future_poll_fn)]
 #![feature(const_maybe_uninit_uninit_array)]
 
 #![allow(incomplete_features, unused_imports, dead_code, unused_variables, unused_macros, unreachable_code, unused_unsafe)]
@@ -34,17 +33,13 @@ use core::mem::MaybeUninit;
 
 use lvgl::core::{Lvgl, TouchPad, Display, ObjExt};
 
-use embassy::{
-    time::{Instant, Duration, Timer},
-    util::Forever,
-    blocking_mutex::CriticalSectionMutex as Mutex,
-};
+use embassy_time::{Duration, Instant, Timer};
+use embassy_util::{Forever, blocking_mutex::CriticalSectionMutex as Mutex};
 use embassy_stm32::{
     Config,
     interrupt,
     interrupt::InterruptExt,
-    executor::InterruptExecutor,
-    time::U32Ext,
+    executor::InterruptExecutor, time::Hertz,
 };
 
 use embedded_sdmmc::Mode;
@@ -99,7 +94,7 @@ mod medium_priority_tasks {
     use super::*;
 
     /*
-    #[embassy::task]
+    #[embassy_executor::task]
     pub async fn lcd_task(mut lcd_receiver: LcdReceiver<'static>) {
         loop {
             lcd_receiver.run_task().await
@@ -107,7 +102,7 @@ mod medium_priority_tasks {
     }
     */
 
-    #[embassy::task]
+    #[embassy_executor::task]
     pub async fn usb_stack() {
         // A separate function just to make error handling easier.
         async fn wait_for_usb_block_device(usb: &mut UsbHost) -> UsbResult<MscBlockDevice> {
@@ -190,7 +185,7 @@ mod medium_priority_tasks {
         }
     }
 
-    #[embassy::task]
+    #[embassy_executor::task]
     pub async fn touch_screen_task(mut touch_screen: TouchScreen) {
         loop {
             // What should happen if lvgl is not pumping click events fast enought?
@@ -202,7 +197,7 @@ mod medium_priority_tasks {
         }
     }
 
-    #[embassy::task]
+    #[embassy_executor::task]
     pub async fn lvgl_tick_task(mut lvgl_ticks: lvgl::core::Ticks) {
         loop {
             lvgl_ticks.inc(1);
@@ -210,7 +205,7 @@ mod medium_priority_tasks {
         }
     }
 
-    #[embassy::task]
+    #[embassy_executor::task]
     pub async fn main_task() {
         let z_axis = unsafe { Z_AXIS.steal() };
         let task_runner = unsafe { TASK_RUNNER.steal() };
@@ -295,8 +290,8 @@ fn main() -> ! {
 
             #[cfg(feature="stm32f407ze")]
             {
-                config.rcc.hse = Some(20.mhz().into());
-                config.rcc.sys_ck = Some(168.mhz().into());
+                config.rcc.hse = Some(Hertz::mhz(20));
+                config.rcc.sys_ck = Some(Hertz::mhz(168).into());
                 // apb1 max speed is 42 mhz
                 // apb2 max speed is 84 mhz
                 config.rcc.pll48 = true;

@@ -5,7 +5,7 @@ use embassy_stm32::pac::SPI1;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
 use embassy_stm32::rcc::Clocks;
-use embassy::time::{Duration, Timer};
+use embassy_time::{Duration, Timer};
 use embassy_stm32::rcc::low_level::RccPeripheral;
 
 use crate::consts::lcd::*;

@@ -6,8 +6,8 @@ use core::mem::MaybeUninit;
 use crate::drivers::lcd::Color8;
 use crate::util::io::{Seek, BufReader, ReadPartial};
 use crate::consts::io::*;
-use embassy::blocking_mutex::raw::NoopRawMutex;
-use embassy::channel::mpmc::{self, Channel, Receiver, Sender};
+use embassy_util::blocking_mutex::raw::NoopRawMutex;
+use embassy_util::channel::mpmc::{self, Channel, Receiver, Sender};
 use alloc::vec::Vec;
 use crate::util::io::Read;
 

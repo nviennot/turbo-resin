@@ -5,8 +5,7 @@ use core::mem::MaybeUninit;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
 use embassy_stm32::spi::{Config, Spi};
-use embassy_stm32::time::U32Ext;
-
+use embassy_stm32::time::Hertz;
 use spi_memory::prelude::*;
 
 type Flash = spi_memory::series25::Flash<
@@ -39,7 +38,7 @@ impl ExtFlash {
         let cs = Output::new(cs, Level::High, Speed::Medium);
         let cfg = Config::default();
         debug!("spi3 f={}", p::SPI3::frequency().0);
-        let spi = Spi::new(spi, sck, mosi, miso, dma_tx, dma_rx, SPI_FREQ_HZ.hz(), cfg);
+        let spi = Spi::new(spi, sck, mosi, miso, dma_tx, dma_rx, Hertz::hz(SPI_FREQ_HZ), cfg);
 
         let spi = SpiAdapter::new(spi);
         let cs = OutputAdapter::new(cs);

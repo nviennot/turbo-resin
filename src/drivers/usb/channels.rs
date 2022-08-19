@@ -9,7 +9,9 @@ use embassy_stm32::pac::{
 
 use crate::util::io::{Read, Write, impl_read_obj, impl_write_obj};
 use core::future::Future;
-use embassy::{channel::signal::Signal, time::{Timer, Duration}};
+use embassy_util::channel::signal::Signal;
+use embassy_time::{Timer, Duration};
+
 use super::{REGS, UsbResult, UsbError};
 
 const NUM_CHANNELS: usize = 8;

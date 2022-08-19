@@ -4,9 +4,8 @@ use embedded_hal::blocking::spi::Transfer;
 use embedded_hal::digital::v2::OutputPin;
 
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull, Pin};
-use embassy::time::{Duration, Timer};
+use embassy_time::{Duration, Timer};
 use embassy_stm32::spi::{Config, Spi, Instance};
-use embassy_stm32::time::U32Ext;
 
 pub struct SpiAdapter<'d, T: Instance, Tx, Rx>(Spi<'d, T, Tx, Rx>);
 

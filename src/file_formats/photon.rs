@@ -9,8 +9,8 @@ type Color8 = u8;
 
 use crate::consts::io::*;
 
-use embassy::blocking_mutex::raw::NoopRawMutex;
-use embassy::channel::mpmc::{self, Channel, Receiver, Sender};
+use embassy_util::blocking_mutex::raw::NoopRawMutex;
+use embassy_util::channel::mpmc::{self, Channel, Receiver, Sender};
 
 use alloc::vec::Vec;
 

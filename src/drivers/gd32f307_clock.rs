@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
 use embassy_stm32::rcc::Clocks;
-use embassy_stm32::time::U32Ext;
+use embassy_stm32::time::Hertz;
 use gd32f3::gd32f307::{PMU, RCU};
 
 pub fn setup_clock_120m_hxtal() -> Clocks {
@@ -77,12 +77,12 @@ pub fn setup_clock_120m_hxtal() -> Clocks {
     }
 
     Clocks {
-        sys: 120.mhz().into(),
-        ahb1: 120.mhz().into(),
-        apb1: 60.mhz().into(),
-        apb2: 120.mhz().into(),
-        apb1_tim: 120.mhz().into(),
-        apb2_tim: 120.mhz().into(),
-        adc: 30.mhz().into(),
+        sys: Hertz::mhz(120),
+        ahb1: Hertz::mhz(120),
+        apb1: Hertz::mhz(60),
+        apb2: Hertz::mhz(120),
+        apb1_tim: Hertz::mhz(120),
+        apb2_tim: Hertz::mhz(120),
+        adc: Hertz::mhz(30),
     }
 }

@@ -4,7 +4,6 @@ use embassy_stm32::pac::timer::regs::Arr16;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::rcc::low_level::RccPeripheral;
 use embassy_stm32::time::Hertz;
-use embassy_stm32::time::U32Ext;
 
 use embassy_stm32::timer::low_level::{Basic16bitInstance, GeneralPurpose16bitInstance};
 
@@ -24,11 +23,11 @@ trait TimerExt {
 
 impl TimerExt for StepTimer {
     fn set_psc(psc: u16) {
-        unsafe { Self::regs_gp16().psc().write(|w| w.set_psc(psc)) }
+        unsafe { Self::regs().psc().write(|w| w.set_psc(psc)) }
     }
 
     fn set_arr(arr: u16) {
-        unsafe { Self::regs_gp16().arr().write(|w| w.set_arr(arr)); }
+        unsafe { Self::regs().arr().write(|w| w.set_arr(arr)); }
     }
 }
 

@@ -6,7 +6,7 @@ use crate::consts::touch_screen::*;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
-use embassy::time::{Duration, Timer};
+use embassy_time::{Duration, Timer};
 
 
 // The scale doesn't really matter. It's just to avoid using floats as we are dealing with small values.

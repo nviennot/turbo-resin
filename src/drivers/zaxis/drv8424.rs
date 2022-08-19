@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use embassy_stm32::pwm::{simple_pwm::SimplePwm, Channel};
+use embassy_stm32::pwm::{simple_pwm::{PwmPin, SimplePwm}, Channel};
 
-use embassy_stm32::gpio::{Dynamic, Output, Level, Speed, Pull};
+use embassy_stm32::gpio::{Flex, Output, Level, Speed, Pull};
+use embassy_stm32::time::Hertz;
 use embassy_stm32::{rcc::low_level::RccPeripheral, pac::fsmc::vals};
-use embassy_stm32::time::U32Ext;
 
 use embassy_stm32::peripherals as p;
 
@@ -20,8 +20,8 @@ pub struct Drv8424 {
     step: Output<'static, p::PE5>,
     dir: Output<'static, p::PE4>,
     enable: Output<'static, p::PE6>,
-    mode0: Dynamic<'static, p::PC3>,
-    mode1: Dynamic<'static, p::PC0>,
+    mode0: Flex<'static, p::PC3>,
+    mode1: Flex<'static, p::PC0>,
     pub step_multiplier: u32,
 }
 
@@ -50,8 +50,8 @@ impl Drv8424 {
         let step = Output::new(step, Level::Low, Speed::Medium);
         let enable = Output::new(enable, Level::Low, Speed::Medium);
 
-        let mode0 = Dynamic::new(mode0);
-        let mode1 = Dynamic::new(mode1);
+        let mode0 = Flex::new(mode0);
+        let mode1 = Flex::new(mode1);
 
 
         // Decay0 | Decay1 | Increasing Steps          | Decreasing Steps
@@ -69,7 +69,7 @@ impl Drv8424 {
         core::mem::forget(Output::new(decay1, Level::Low, Speed::Low));
 
         // vref is used to set the amount of current the motor receives.
-        let mut pwm = SimplePwm::new_1ch4(pwm_timer, vref, 100.khz());
+        let mut pwm = SimplePwm::new(pwm_timer, None, None, None, Some(PwmPin::new_ch4(vref)), Hertz::khz(100));
         pwm.set_duty(Channel::Ch4, ((pwm.get_max_duty() as u32) * MOTOR_CURRENT_PERCENT / 100) as u16);
         pwm.enable(Channel::Ch4);
 
@@ -98,16 +98,16 @@ impl Drv8424 {
 
         if self.step_multiplier != step_multiplier {
             match step_multiplier {
-                2|16|128 =>   { self.mode0.make_input(Pull::None) },
-                4|8|64|256 => { self.mode0.make_output(Level::Low, Speed::Medium) },
-                1|32 =>       { self.mode0.make_output(Level::High, Speed::Medium) },
+                2|16|128 =>   { self.mode0.set_as_input(Pull::None) },
+                4|8|64|256 => { self.mode0.set_low(); self.mode0.set_as_output(Speed::Medium) },
+                1|32 =>       { self.mode0.set_high(); self.mode0.set_as_output(Speed::Medium) },
                 _ => { unimplemented!() },
             }
 
             match step_multiplier {
-                1|2|8 =>    { self.mode1.make_input(Pull::None); },
-                128|256 =>  { self.mode1.make_output(Level::Low, Speed::Medium); },
-                16|32|64 => { self.mode1.make_output(Level::High, Speed::Medium); },
+                1|2|8 =>    { self.mode1.set_as_input(Pull::None); },
+                128|256 =>  { self.mode1.set_low(); self.mode1.set_as_output(Speed::Medium); },
+                16|32|64 => { self.mode1.set_high(); self.mode1.set_as_output(Speed::Medium); },
                 _ => { unimplemented!() },
             }
 

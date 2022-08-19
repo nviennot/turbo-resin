@@ -4,7 +4,7 @@
 use futures::Future;
 use futures::FutureExt;
 
-use embassy::channel::signal::Signal;
+use embassy_util::channel::signal::Signal;
 use core::sync::atomic::AtomicBool;
 use core::sync::atomic::Ordering;
 

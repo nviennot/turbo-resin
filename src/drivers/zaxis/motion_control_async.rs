@@ -2,7 +2,7 @@
 
 use core::cell::Cell;
 
-use embassy::channel::signal::Signal;
+use embassy_util::channel::signal::Signal;
 
 use crate::util::SharedWithInterrupt;
 

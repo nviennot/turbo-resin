@@ -9,10 +9,8 @@ use embassy_stm32::{
 };
 pub(crate) const REGS: OtgFs = pac::USB_OTG_FS;
 
-use embassy::{
-    channel::signal::Signal,
-    time::{Duration, Timer},
-};
+use embassy_util::channel::signal::Signal;
+use embassy_time::{Duration, Timer};
 
 use super::{Channel, DetectedDevice, InterfaceHandler, UsbResult, UsbError};
 

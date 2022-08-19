@@ -6,9 +6,9 @@ use crate::consts::touch_screen::*;
 use embassy_stm32::exti::ExtiInput;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
-use embassy::time::{Duration, Timer};
+use embassy_stm32::time::Hertz;
+use embassy_time::{Duration, Timer};
 use embassy_stm32::spi::{Config, Spi};
-use embassy_stm32::time::U32Ext;
 
 use crate::consts::display::*;
 
@@ -191,7 +191,7 @@ impl ADS7846 {
     ) -> Self {
         let cs = Output::new(cs, Level::High, Speed::Medium);
         let cfg = Config::default();
-        let spi = Spi::new(spi, sck, mosi, miso, dma_tx, dma_rx, SPI_FREQ_HZ.hz(), cfg);
+        let spi = Spi::new(spi, sck, mosi, miso, dma_tx, dma_rx, Hertz::hz(SPI_FREQ_HZ), cfg);
 
         Self { cs, spi }
     }

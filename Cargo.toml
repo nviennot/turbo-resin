@@ -9,12 +9,14 @@ version = "0.1.0"
 log = { version = "0.4", features = ["max_level_debug", "release_max_level_off"] }
 futures = { version = "0.3", default-features = false }
 embedded-hal = "0.2.3"
-cortex-m = { version = "0.7", features = ["inline-asm"] }
+cortex-m = { version = "0.7", features = ["inline-asm", "critical-section-single-core"] }
 cortex-m-rt = "0.7"
 rtt-target = { version = "0.3", features = ["cortex-m"]}
 
-embassy = { path = "embassy/embassy", features = ["log"] }
-embassy-stm32 = { path = "embassy/embassy-stm32", features= ["nightly", "unstable-pac", "exti"] }
+embassy-util = { path = "embassy/embassy-util", features = ["log"] }
+embassy-executor = { path = "embassy/embassy-executor", features = ["log", "integrated-timers"] }
+embassy-time = { path = "embassy/embassy-time", features = ["log", "tick-4000hz"] }
+embassy-stm32 = { path = "embassy/embassy-stm32", features = ["log", "nightly", "unstable-pac", "exti"]  }
 
 # The gd32f3 crate is only to configure the clock at 120Mhz
 gd32f3 = { git = "https://github.com/nviennot/gd32f3-rs.git", optional=true }

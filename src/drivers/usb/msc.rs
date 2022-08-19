@@ -2,9 +2,7 @@
 
 use core::mem::MaybeUninit;
 
-use embassy::{
-    time::{Duration, Timer},
-};
+use embassy_time::{Duration, Timer};
 
 use super::{Channel, EndpointType, Direction, ControlPipe, ensure,
     InterfaceHandler, InterfaceDescriptor, EndpointDescriptor, UsbResult,
