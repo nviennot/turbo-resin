@@ -139,8 +139,8 @@ endif
 
 misc/orig-firmware-$(PRINTER).bin:
 	@echo Dump your original firmare, and place it here: $@
-	@echo To do this, run 'make start_probe FLASH_WITH=openocd+gdb', then:
-	@echo 'echo dump_image $@ 0 $$((512*1024)) | nc localhost 4444'
+	@echo To do this, run \"'make start_probe FLASH_WITH=openocd+gdb'\", then:
+	@echo \"'echo dump_image $@ 0 $$((512*1024)) | nc localhost 4444'\"
 	@exit 1
 
 misc/orig-firmware-$(PRINTER).elf: misc/orig-firmware-$(PRINTER).bin
