@@ -16,6 +16,8 @@ use std::path::PathBuf;
 fn main() {
     #[cfg(not(any(feature = "stm32f407ze", feature = "gd32f307ve")))]
     compile_error!("No printer selected. Use make PRINTER=mono4k or cargo --features=mono4k");
+    #[allow(unused_variables)]
+    let mcu = "unset";
 
     #[cfg(feature = "stm32f407ze")]
     let mcu = "stm32f407ze";
