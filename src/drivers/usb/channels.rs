@@ -15,9 +15,14 @@ use embassy_time::{Timer, Duration};
 use super::{REGS, UsbResult, UsbError};
 
 const NUM_CHANNELS: usize = 8;
- // There can be many NAKs. It's okay to do _that_ many retries, it's fast.
-const NUM_XFER_NAK_ATTEMPTS: usize = 100_000;
-const NUM_XFER_ATTEMPTS: usize = 5;
+
+// We retry a transfer 10 times, except for NAKs which can be a bit more
+// prevalent due to the device not being ready yet.
+// We add a 1ms delay between retries.
+const NUM_XFER_ATTEMPTS: usize = 10;
+const NUM_XFER_NAK_ATTEMPTS: usize = 1000;
+const RETRY_DELAY: Duration = Duration::from_millis(1);
+
 
 struct ChannelInterruptContext {
     xfer_signal: Signal<UsbResult<()>>,
@@ -382,6 +387,8 @@ impl Channel {
                     }
                 }
             }
+
+            Timer::after(RETRY_DELAY).await;
         }
     }
 

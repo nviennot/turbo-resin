@@ -211,7 +211,10 @@ impl Display {
             self.cmd(0xe9, &[0x00]);
             self.cmd(0xf7, &[0xa9, 0x51, 0x2c, 0x82]);
             self.cmd(0xb6, &[0x02, 0x02]);
-            self.cmd(0x36, &[0xe8]);
+
+            self.cmd(0x36, &[0xe8]); // 1110_1000
+            // This rotates the screen
+            // self.cmd(0x36, &[0x38]);   // 0011_1000
         }
 
         // Sleep Out

@@ -273,7 +273,7 @@ impl UsbHost {
     pub async fn wait_for_device(&mut self) -> UsbResult<DetectedDevice> {
         self.init();
 
-        trace!("USB waiting for device");
+        debug!("USB waiting for device");
         self.wait_for_event(Event::DeviceDetected).await?;
 
         debug!("USB device detected");
@@ -285,9 +285,9 @@ impl UsbHost {
         self.reset_port().await;
 
         self.wait_for_event(Event::PortReady).await?;
-        trace!("USB port ready");
+        debug!("USB port ready");
 
-        Timer::after(Duration::from_millis(20)).await;
+        Timer::after(Duration::from_millis(100)).await;
         Ok(DetectedDevice)
     }
 }

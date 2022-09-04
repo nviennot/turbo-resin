@@ -26,12 +26,13 @@ pub struct DetectedDevice;
 
 impl DetectedDevice {
     pub async fn enumerate<H: InterfaceHandler>(self) -> UsbResult<H> {
-        trace!("USB enumeration starting");
+        debug!("USB enumeration starting");
         const DEV_ADDR: u8 = 1;
         let mut ctrl = {
-            let mut ctrl = ControlPipe::new(0, 8, 1, 2);
+            let mut ctrl = ControlPipe::new(0, 8, 0, 1);
             let dd = ctrl.get_descriptor::<DeviceDescriptorPartial>(0).await?;
             let mps = dd.max_packet_size0 as u16;
+            debug!("USB partial descriptor received. Max packet size is {}", mps);
             ctrl.set_address(DEV_ADDR).await?;
             ControlPipe::new(DEV_ADDR, mps, 0, 1)
         };
@@ -156,7 +157,6 @@ impl ControlPipe {
             // TODO It's not clear if we need to force it to Data1, or we should be toggling.
             // try with a small max_packet_size.
             self.ch_in.with_pid(PacketType::Data1).read(buf).await?;
-            //self.ch_in.with_pid(PacketType::Data1).read(buf).await?;
         }
         self.ch_out.with_pid(PacketType::Data1).write(&[]).await?;
 
