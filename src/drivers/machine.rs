@@ -29,7 +29,7 @@ pub struct Machine {
     pub z_bottom_sensor: zaxis::BottomSensor,
 }
 
-use embassy_stm32::{Peripherals, gpio::Input};
+use embassy_stm32::{Peripherals, gpio::Input, Config, time::Hertz};
 
 impl Machine {
     pub fn new(cp: cortex_m::Peripherals, p: Peripherals) -> Self {

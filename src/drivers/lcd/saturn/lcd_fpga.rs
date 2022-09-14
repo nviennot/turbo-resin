@@ -1,12 +1,10 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use core::mem::{MaybeUninit, size_of};
-
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull, Pin};
 use embassy_stm32::peripherals as p;
 
 use crate::drivers::delay_ms;
-use crate::drivers::ext_flash::{ExtFlash, Error};
+use crate::drivers::ext_flash::ExtFlash;
 use crate::util::bitbang_spi::Spi;
 use spi_memory::prelude::*;
 
@@ -100,7 +98,7 @@ impl BitstreamMetadata {
         assert!(header.magic == BITSTREAM_MAGIC, "Bitstream header magic invalid");
 
         Self {
-            offset: BITSTREAM_HEADER_OFFSET + size_of::<BitstreamHeader>() as u32,
+            offset: BITSTREAM_HEADER_OFFSET + core::mem::size_of::<BitstreamHeader>() as u32,
             size: header.size,
         }
     }

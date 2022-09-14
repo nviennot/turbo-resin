@@ -526,6 +526,7 @@ fn div_round_up(v: usize, denom: usize) -> usize {
 }
 
 #[repr(u8)]
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum EndpointType {
     Control = 0,
@@ -535,6 +536,7 @@ pub enum EndpointType {
 }
 
 #[repr(u8)]
+#[allow(dead_code)]
 #[derive(Clone, Copy, PartialEq, Eq, Debug)]
 pub enum PacketType {
     Data0 = 0,

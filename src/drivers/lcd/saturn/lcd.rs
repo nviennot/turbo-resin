@@ -1,18 +1,9 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
-use embassy_stm32::exti::ExtiInput;
-use embassy_stm32::pac::SPI1;
 use embassy_stm32::peripherals as p;
 use embassy_stm32::gpio::{Level, Input, Output, Speed, Pull};
-use embassy_stm32::rcc::Clocks;
-use embassy_time::{Duration, Timer};
-use embassy_stm32::rcc::low_level::RccPeripheral;
-
 use crate::consts::lcd::*;
-
-use crate::drivers::{delay_us, delay_ms};
 use crate::util::bitbang_spi::Spi;
-
 use super::Framebuffer;
 use super::super::Canvas;
 
@@ -21,6 +12,7 @@ const REPLY_HEADER: u16 = 0xfbfd;
 
 #[derive(Debug, Clone, Copy)]
 #[repr(u8)]
+#[allow(dead_code)]
 enum Command {
     MaskDisplay = 0x00,
     Unknown03 = 0x03,

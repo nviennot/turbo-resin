@@ -1,7 +1,7 @@
 # Pick your printer
 # Don't forget to modify ./vscode/settings.json as well if you are using VSCode.
-PRINTER ?= mono4k
-#PRINTER ?= saturn
+#PRINTER ?= mono4k
+PRINTER ?= saturn
 
 # Pick your hardawre probe by specifying the PROBE variable.
 # Then set the FLASH_WITH variable appropriately.

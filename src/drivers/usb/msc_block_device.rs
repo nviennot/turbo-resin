@@ -75,15 +75,4 @@ impl MscBlockDevice {
             Err(UsbError::InvalidBlockSize)
         }
     }
-
-    pub fn into_fatfs_controller(self) -> Controller<Self, NullTimeSource> {
-        Controller::new(self, NullTimeSource)
-    }
-}
-
-pub struct NullTimeSource;
-impl TimeSource for NullTimeSource {
-    fn get_timestamp(&self) -> Timestamp {
-        Timestamp { year_since_1970: 0, zero_indexed_month: 0, zero_indexed_day: 0, hours: 0, minutes: 0, seconds: 0 }
-    }
 }

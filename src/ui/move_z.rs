@@ -1,5 +1,6 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
 
+use futures::Future;
 use lvgl::{
     style::State,
     core::Screen,
@@ -14,7 +15,7 @@ use crate::{
     drivers::zaxis::{
         self,
         prelude::*,
-    },
+    }, util::CancellableTask,
 };
 use crate::consts::zaxis::motion_control::*;
 
@@ -130,7 +131,7 @@ impl MoveZ {
         // TODO check if the state has changed, this is burning a lot of CPU.
         let c = self.task_runner.is_task_cancelled();
         // We could use get/set state instead?
-        match self.task_runner.get_current_task().cloned() {
+        match self.task_runner.get_current_task() {
             Some(Task::MoveUp) => {
                 if c { self.btn_move_up.add_state(State::DISABLED); }
                 self.btn_move_down.add_state(State::DISABLED);
@@ -171,30 +172,34 @@ pub enum Task {
     MoveZero,
 }
 
-impl Task {
-    pub async fn run(&self, task_runner: &TaskRunner<Self>, mc: &mut zaxis::MotionControlAsync) {
-        let f = self.run_inner(mc);
-        if task_runner.cancellable(f).await.is_err() {
+impl CancellableTask for Task {
+    type Context = zaxis::MotionControlAsync;
+
+    type RunFuture<'a> = impl Future<Output = ()> + 'a where Self: 'a;
+    type CancelFuture<'a> = impl Future<Output = ()> + 'a where Self: 'a;
+
+    fn run<'a>(&'a self, mc: &'a mut zaxis::MotionControlAsync) -> Self::RunFuture<'a> {
+        async move {
+            match self {
+                Self::MoveUp => mc.set_target_relative(40.0.mm()),
+                Self::MoveDown => mc.set_target_relative((-40.0).mm()),
+                Self::MoveZero => {
+                    let s = mc.get_max_speed();
+                    zaxis::calibrate_origin(mc, None).await;
+                    // FIXME we don't restore the original speed when the task is cancelled.
+                    mc.set_max_speed(s);
+                    mc.set_target(0.0.mm());
+                }
+            };
+            mc.wait(zaxis::Event::Idle).await;
+        }
+    }
+
+    fn cancel<'a>(&'a self, mc: &'a mut zaxis::MotionControlAsync) -> Self::CancelFuture<'a> {
+        async move {
             // The task was cancelled
             mc.stop();
             mc.wait(zaxis::Event::Idle).await;
         }
     }
-
-    async fn run_inner(&self, mc: &mut zaxis::MotionControlAsync) {
-        use Task::*;
-        match self {
-            MoveUp => mc.set_target_relative(40.0.mm()),
-            MoveDown => mc.set_target_relative((-40.0).mm()),
-            MoveZero => {
-                let s = mc.get_max_speed();
-                zaxis::calibrate_origin(mc, None).await;
-                // FIXME we don't restore the original speed when the task is cancelled.
-                mc.set_max_speed(s);
-                mc.set_target(0.0.mm());
-            }
-        };
-        mc.wait(zaxis::Event::Idle).await;
-    }
-
 }

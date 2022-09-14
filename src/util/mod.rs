@@ -12,3 +12,5 @@ pub use spi_adapter::*;
 pub mod bitbang_spi;
 
 pub mod io;
+
+mod panic;

@@ -16,3 +16,5 @@ pub use delay::*;
 
 mod cycle_counter;
 pub use cycle_counter::*;
+
+pub mod clock;

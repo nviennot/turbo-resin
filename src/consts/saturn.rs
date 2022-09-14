@@ -1,4 +1,7 @@
 // SPDX-License-Identifier: GPL-3.0-or-later
+
+#![allow(dead_code)]
+
 use embassy_stm32::peripherals as p;
 
 pub mod system {

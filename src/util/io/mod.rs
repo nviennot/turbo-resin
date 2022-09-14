@@ -8,3 +8,6 @@ pub use traits::*;
 
 mod buf_io;
 pub use buf_io::*;
+
+mod fatfs;
+pub use fatfs::*;
