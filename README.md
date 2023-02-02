@@ -66,14 +66,20 @@ the Rust Embedded Book](https://docs.rust-embedded.org/book/intro/install.html),
 run the following:
 
 ```bash
+# prereqs (arch)
+sudo pacman -Sy base-devel arm-none-eabi-gcc arm-none-eabi-newlib clang openocd python
+# prereqs (ubuntu)
+sudo apt install -y build-essential curl python3 gcc-arm-none-eabi gdb-multiarch libclang-dev openocd
+# prereqs (macOS)
+brew install armmbed/formulae/arm-none-eabi-gcc openocd
+
+# install rust
 curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh
 source $HOME/.cargo/env
+
+# rust prereqs (must be ran inside repo)
 rustup component add llvm-tools-preview
 cargo install cargo-binutils
-# Ubuntu/Debian
-sudo apt install -y gcc-arm-none-eabi gdb-multiarch libclang-dev openocd
-# macOS
-brew install armmbed/formulae/arm-none-eabi-gcc openocd
 ```
 
 You are ready for building and flashing the firmware.
