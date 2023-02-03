@@ -41,7 +41,7 @@ pub struct MoveZ {
     btn_stop: Btn<MoveZ>,
     current_pos: Label<MoveZ>,
 
-    distence: Steps,
+    distence: f32,
     task_runner: &'static TaskRunner<Task>,
     zaxis: &'static zaxis::MotionControlAsync,
 
@@ -56,7 +56,7 @@ impl MoveZ {
         zaxis: &'static zaxis::MotionControlAsync,
     ) -> Self {
 
-        let distence = 100.mm();
+        let distence = 1.0;
 
         let mut style = Style::new();
         style.set_pad_all(10);
@@ -81,9 +81,10 @@ impl MoveZ {
 
         let btn_0_1mm = Btn::new(screen).apply(|obj| {
             obj.on_event(Event::Clicked, |context| {
-                //println!("Clicked on: 0.1mm");
+                
+                context.distence = 0.1;
+                
             })
-            .add_state(State::DISABLED)
             .set_grid_cell(
                 GridAlign::Stretch,
                 0,
@@ -100,9 +101,11 @@ impl MoveZ {
 
         let btn_1mm = Btn::new(screen).apply(|obj| {
             obj.on_event(Event::Clicked, |context| {
-                //println!("Clicked on: 1mm");
+                
+                context.distence = 1.0;
+                
             })
-            .clear_state(State::DISABLED)
+            .add_state(State::CHECKED)
             .set_grid_cell(
                 GridAlign::Stretch,
                 1,
@@ -119,9 +122,10 @@ impl MoveZ {
 
         let btn_10mm = Btn::new(screen).apply(|obj| {
             obj.on_event(Event::Clicked, |context| {
-                //println!("Clicked on: 10mm");
+                
+                context.distence = 10.0;
+                
             })
-            .add_state(State::DISABLED)
             .set_grid_cell(
                 GridAlign::Stretch,
                 2,
@@ -139,7 +143,7 @@ impl MoveZ {
         let btn_up = Btn::new(screen).apply(|obj| {
             obj.on_event(Event::Clicked, |context| {
                 
-                context.task_runner.enqueue_task(Task::MoveUp{steps:context.distence}).unwrap();                
+                context.task_runner.enqueue_task(Task::MoveUp{steps:context.distence.mm()}).unwrap();                
                 
             })
             .set_grid_cell(
@@ -179,7 +183,7 @@ impl MoveZ {
         let btn_down = Btn::new(screen).apply(|obj| {
             obj.on_event(Event::Clicked, |context| {
 
-                context.task_runner.enqueue_task(Task::MoveDown{steps:context.distence}).unwrap();                
+                context.task_runner.enqueue_task(Task::MoveDown{steps:context.distence.mm()}).unwrap();                
                 
             })
             .set_grid_cell(
@@ -280,6 +284,30 @@ impl MoveZ {
                 self.btn_stop.add_state(State::DISABLED);                
             }
         }
+
+        match self.distence {
+            x if x == 0.1 => {
+                self.btn_0_1mm.add_state(State::CHECKED);
+                self.btn_1mm.clear_state(State::CHECKED);
+                self.btn_10mm.clear_state(State::CHECKED);
+            },
+            x if x == 1.0 => {
+                self.btn_0_1mm.clear_state(State::CHECKED);
+                self.btn_1mm.add_state(State::CHECKED);
+                self.btn_10mm.clear_state(State::CHECKED);            
+            },
+            x if x == 10.0 => {
+                self.btn_0_1mm.clear_state(State::CHECKED);
+                self.btn_1mm.clear_state(State::CHECKED);
+                self.btn_10mm.add_state(State::CHECKED);            
+            },
+            // SHould never happen
+            _ => {
+                self.btn_0_1mm.clear_state(State::DISABLED);
+                self.btn_1mm.clear_state(State::DISABLED);
+                self.btn_10mm.clear_state(State::DISABLED);                            
+            }
+        }
     }
 }
 
@@ -300,7 +328,7 @@ impl CancellableTask for Task {
         async move {
             match self {
                 Self::MoveUp { steps } => mc.set_target_relative(*steps),
-                Self::MoveDown { steps } => mc.set_target_relative(*steps),
+                Self::MoveDown { steps } => mc.set_target_relative(-*steps),
                 Self::MoveZero => {
                     let s = mc.get_max_speed();
                     zaxis::calibrate_origin(mc, None).await;
@@ -316,7 +344,7 @@ impl CancellableTask for Task {
     fn cancel<'a>(&'a self, mc: &'a mut zaxis::MotionControlAsync) -> Self::CancelFuture<'a> {
         async move {
             // The task was cancelled
-            mc.hard_stop();
+            mc.stop();
             mc.wait(zaxis::Event::Idle).await;
         }
     }
