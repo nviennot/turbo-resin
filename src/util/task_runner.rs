@@ -81,7 +81,7 @@ impl<T: CancellableTask + Copy + Send> TaskRunner<T> {
             };
 
             if was_cancelled {
-                task.cancel(ctx);
+                task.cancel(ctx).await;
                 debug!("Task cancelled");
             } else {
                 debug!("Task complete");
