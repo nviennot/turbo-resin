@@ -5,7 +5,7 @@ use crate::consts::zaxis::hardware::*;
 // We describe distances in mm as integers, in number of stepper moter steps to
 // not loose accuracy with floating points.
 
-#[derive(PartialEq, PartialOrd, Clone, Copy)]
+#[derive(PartialEq, PartialOrd, Clone, Copy,Debug)]
 pub struct Steps(pub i32);
 
 const STEPS_PER_MM: f32 = (DRIVER_MICROSTEPS * FULL_STEPS_PER_REVOLUTION) as f32 / SCREW_THREAD_PITCH_MM;
